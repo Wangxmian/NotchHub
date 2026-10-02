@@ -27,6 +27,7 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
     private var settingsSubscription: AnyCancellable?
     private var ownWriteChangeCount: Int?
     private var ocrTasks: [UUID: Task<Void, Never>] = [:]
+    private var ocrTail: Task<Void, Never>?
     var preferences: ClipboardPreferences { settingsStore.settings.clipboardPreferences }
     var maxItems: Int { settingsStore.settings.clipboardMaxItems }
     var cleanupPolicy: CleanupPolicy { settingsStore.settings.clipboardAutoCleanupPolicy }
@@ -258,9 +259,14 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
     }
 
     private func scheduleOCR(_ item: ClipboardHistoryItem) {
-        guard item.contentType == .image, item.ocrText == nil, ocrTasks[item.id] == nil,
-              let data = try? imageData(item) else { return }
+        guard item.contentType == .image, item.ocrText == nil, ocrTasks[item.id] == nil else { return }
+        let previous = ocrTail
         let task = Task { [weak self] in
+            await previous?.value
+            guard !Task.isCancelled, let self else { return }
+            defer { self.ocrTasks[item.id] = nil }
+            guard self.history.contains(where: { $0.id == item.id && $0.ocrText == nil }),
+                  let data = try? self.imageData(item) else { return }
             let text = await Task.detached(priority: .utility) { () -> String? in
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .fast
@@ -269,11 +275,11 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
                     return request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
                 } catch { return nil }
             }.value
-            guard !Task.isCancelled, let self else { return }
-            self.ocrTasks[item.id] = nil
+            guard !Task.isCancelled else { return }
             if let text { do { try self.mutateItem(item.id) { $0.ocrText = text } } catch { self.onError?(error.localizedDescription) } }
         }
         ocrTasks[item.id] = task
+        ocrTail = task
     }
 
     // A poll failure means captures are being dropped (e.g. the history file
