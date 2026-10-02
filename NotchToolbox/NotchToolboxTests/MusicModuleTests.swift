@@ -1704,7 +1704,9 @@ struct MusicModuleTests {
     @Test func foundationMusicProcessRunnerDrainsLargeStdoutBeforeWaitingForExit() async throws {
         let runner = FoundationMusicProcessRunner()
 
-        let output = try await withTimeout(seconds: 2) {
+        // Python's first launch on a fresh CI image can exceed two seconds.
+        // A blocked pipe still fails this bounded deadline; payload assertions remain exact.
+        let output = try await withTimeout(seconds: 10) {
             try await runner.run(
                 "/usr/bin/python3",
                 arguments: ["-c", "import sys; sys.stdout.write('x' * 200000); sys.stderr.write('done')"]
