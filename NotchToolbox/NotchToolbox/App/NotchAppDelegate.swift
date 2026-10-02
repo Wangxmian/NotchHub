@@ -38,6 +38,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        shellRuntime?.handleTermination()
         updateController.discardDeferredPreparedUpdateForTermination()
     }
 

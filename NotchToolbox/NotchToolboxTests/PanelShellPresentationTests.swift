@@ -77,7 +77,7 @@ struct PanelShellPresentationTests {
         #expect(PanelShellPresentation.bodySize(for: .music) == CGSize(width: 580, height: 280))
         #expect(PanelShellPresentation.bodySize(for: .fileStash) == CGSize(width: 580, height: 120))
         #expect(PanelShellPresentation.bodySize(for: .aiChat) == CGSize(width: 580, height: 280))
-        #expect(PanelShellPresentation.bodySize(for: .clipboard) == CGSize(width: 580, height: 177))
+        #expect(PanelShellPresentation.bodySize(for: .clipboard) == CGSize(width: 580, height: 384))
         #expect(PanelShellPresentation.bodySize(for: .pomodoro) == CGSize(width: 580, height: 384))
     }
 
@@ -95,7 +95,7 @@ struct PanelShellPresentationTests {
     @Test func compositionRootOverrideCanResizeClipboardBodyForEmptyState() {
         let compositionRoot = AppCompositionRoot(activeModule: .clipboard)
 
-        #expect(compositionRoot.panelBodySize(for: .clipboard) == CGSize(width: 580, height: 177))
+        #expect(compositionRoot.panelBodySize(for: .clipboard) == CGSize(width: 580, height: 384))
 
         compositionRoot.setPanelBodySize(CGSize(width: 580, height: 120), for: .clipboard)
 

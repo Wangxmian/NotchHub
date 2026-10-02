@@ -1,0 +1,39 @@
+name: Clipboard parity validation
+on:
+  push:
+    branches: [clipboard-maccy-parity]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Swift 6.2 Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Build native application and extract App Intents metadata
+        run: >-
+          xcodebuild -project NotchToolbox/NotchToolbox.xcodeproj
+          -scheme NotchToolbox -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath build
+          CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=13.0
+          build > native-build.log 2>&1
+      - name: Run clipboard behavior regression
+        run: python3 NotchToolbox/LocalBuild/verify.py ClipboardRegression.swift > clipboard-regression.log 2>&1
+      - name: Run Pomodoro regression
+        run: python3 NotchToolbox/LocalBuild/verify.py > pomodoro-regression.log 2>&1
+      - name: Verify App Intents metadata is present
+        run: test -d build/Build/Products/Release/NotchHub.app/Contents/Resources/Metadata.appintents
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-validation-logs
+          path: |
+            native-build.log
+            clipboard-regression.log
+            pomodoro-regression.log

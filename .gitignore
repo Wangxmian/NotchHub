@@ -44,3 +44,6 @@ outputs/
 *.dmg
 *.zip
 LocalBuild/test-output/
+
+# Python local tooling
+__pycache__/

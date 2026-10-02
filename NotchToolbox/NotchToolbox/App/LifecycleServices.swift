@@ -42,6 +42,8 @@ final class CarbonGlobalShortcutService: GlobalShortcutServicing {
     private var handler: (@MainActor () -> Void)?
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private let identifier: UInt32
+    init(identifier: UInt32 = 1) { self.identifier = identifier }
 
     func register(
         _ shortcut: KeyboardShortcutDescriptor,
@@ -53,7 +55,7 @@ final class CarbonGlobalShortcutService: GlobalShortcutServicing {
         let modifiers = KeyboardShortcutCarbonMapper.modifiers(for: shortcut.modifiers)
         var hotKeyID = EventHotKeyID(
             signature: KeyboardShortcutCarbonMapper.signature,
-            id: 1
+            id: identifier
         )
         var nextHotKeyRef: EventHotKeyRef?
         let registerStatus = RegisterEventHotKey(
@@ -75,7 +77,7 @@ final class CarbonGlobalShortcutService: GlobalShortcutServicing {
         var nextEventHandlerRef: EventHandlerRef?
         let installStatus = InstallEventHandler(
             GetEventDispatcherTarget(),
-            { _, _, userData in
+            { _, event, userData in
                 guard let userData else {
                     return noErr
                 }
@@ -83,6 +85,10 @@ final class CarbonGlobalShortcutService: GlobalShortcutServicing {
                 let service = Unmanaged<CarbonGlobalShortcutService>
                     .fromOpaque(userData)
                     .takeUnretainedValue()
+                var received = EventHotKeyID()
+                guard let event, GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &received) == noErr,
+                      received.signature == KeyboardShortcutCarbonMapper.signature,
+                      received.id == service.identifier else { return OSStatus(eventNotHandledErr) }
                 Task { @MainActor in
                     service.handler?()
                 }
@@ -143,11 +149,31 @@ enum KeyboardShortcutCarbonMapper {
             throw GlobalShortcutError.unsupportedKey(keyEquivalent)
         }
 
+        if let code = currentLayoutKeyCode(String(character)) { return code }
         guard let code = keyCodes[character] else {
             throw GlobalShortcutError.unsupportedKey(keyEquivalent)
         }
 
         return code
+    }
+
+    static func currentLayoutKeyCode(_ character: String) -> UInt32? {
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue()
+        guard let bytes = CFDataGetBytePtr(data) else { return nil }
+        let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
+        for code in UInt16(0)...UInt16(127) {
+            var state: UInt32 = 0; var count = 0; var buffer = [UniChar](repeating: 0, count: 8)
+            let status = UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysBit), &state, buffer.count, &count, &buffer)
+            if status == noErr && String(utf16CodeUnits: buffer, count: count).lowercased() == character.lowercased() { return UInt32(code) }
+        }
+        return nil
+    }
+    static var commandSwitchesToQWERTY: Bool {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(), let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return false }
+        let value = Unmanaged<CFString>.fromOpaque(raw).takeUnretainedValue() as String
+        return value.lowercased().contains("dvorak-qwerty")
     }
 
     static func modifiers(for modifiers: [ShortcutModifier]) -> UInt32 {

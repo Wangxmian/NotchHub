@@ -27,14 +27,33 @@ final class ClipboardStore {
         var createdPayloadFileNames: [String] = []
         var createdThumbnailFileNames: [String] = []
 
-        if let duplicateIndex = history.firstIndex(where: {
-            $0.contentHash == capture.contentHash && $0.contentType == capture.contentType
+        if let duplicateIndex = try history.firstIndex(where: { item in
+            guard !capture.representations.isEmpty else {
+                return item.contentHash == capture.contentHash && item.contentType == capture.contentType
+            }
+            let existing = try representationGroups(for: item)
+            guard existing.count == capture.representations.count else { return false }
+            let transient: Set<String> = ["io.github.Wangxmian.NotchHub.clipboard", "org.nspasteboard.source", "org.nspasteboard.ModifiedType", "com.apple.webpasteboard.metadata", "org.chromium.source-url", "org.chromium.source-token"]
+            return zip(existing, capture.representations).allSatisfy { old, new in
+                let incoming = new.filter { !transient.contains($0.pasteboardType) }
+                return !incoming.isEmpty && incoming.allSatisfy { rep in old.contains { $0.pasteboardType == rep.pasteboardType && $0.data == rep.data } }
+            }
         }) {
-            removedItems.append(history.remove(at: duplicateIndex))
+            var item = history.remove(at: duplicateIndex)
+            item.firstCopiedAt = item.firstCopiedAt ?? item.copiedAt
+            item.copiedAt = capture.capturedAt
+            item.copyCount += 1
+            item.sourceAppBundleID = capture.sourceAppBundleID
+            item.sourceAppName = capture.sourceAppName
+            history.insert(item, at: 0)
+            try persist(history)
+            return history
         }
 
         do {
-            let payloadResult = try makePayloadDescriptor(for: capture.payload)
+            let payloadResult = try capture.representations.isEmpty
+                ? makePayloadDescriptor(for: capture.payload)
+                : makeRepresentations(capture.representations)
             createdPayloadFileNames = payloadResult.createdFileNames
 
             let thumbnailResult = try makeThumbnailDescriptor(for: capture.thumbnail)
@@ -49,18 +68,22 @@ final class ClipboardStore {
                 sourceAppBundleID: capture.sourceAppBundleID,
                 sourceAppName: capture.sourceAppName,
                 payload: payloadResult.descriptor,
-                thumbnail: thumbnailResult.descriptor
+                thumbnail: thumbnailResult.descriptor,
+                firstCopiedAt: capture.capturedAt
             )
 
             history.insert(item, at: 0)
 
-            if history.count > maxItems {
-                removedItems.append(contentsOf: history.suffix(history.count - maxItems))
-                history = Array(history.prefix(maxItems))
+            var ordinaryCount = 0
+            history = history.filter { item in
+                if item.isPinned { return true }
+                ordinaryCount += 1
+                if ordinaryCount > maxItems { removedItems.append(item); return false }
+                return true
             }
 
             try persist(history)
-            try removeDetachedFiles(
+            try? removeDetachedFiles(
                 previouslyStoredItems: removedItems,
                 retaining: history
             )
@@ -86,6 +109,9 @@ final class ClipboardStore {
         switch item.payload {
         case let .inline(fileName, _, _):
             return try Data(contentsOf: payloadsDirectoryURL.appending(path: fileName))
+        case let .representations(groups):
+            guard let first = groups.first?.first else { return Data() }
+            return try Data(contentsOf: payloadsDirectoryURL.appending(path: first.fileName))
         case let .figma(representations):
             guard let first = representations.first else {
                 return Data()
@@ -109,6 +135,10 @@ final class ClipboardStore {
                     suggestedFileExtension: suggestedFileExtension
                 ),
             ]
+        case let .representations(groups):
+            return try groups.flatMap { $0 }.map { descriptor in
+                ClipboardInlineRepresentation(data: try Data(contentsOf: payloadsDirectoryURL.appending(path: descriptor.fileName)), pasteboardType: descriptor.pasteboardType, suggestedFileExtension: descriptor.suggestedFileExtension)
+            }
         case let .figma(representations):
             return try representations.map { representation in
                 ClipboardInlineRepresentation(
@@ -132,8 +162,8 @@ final class ClipboardStore {
             .subtracting(Set(history.compactMap(\.thumbnailFileName)))
 
         try persist(history)
-        try removeStoredFiles(at: payloadsDirectoryURL, named: removedPayloadFileNames)
-        try removeStoredFiles(at: thumbnailsDirectoryURL, named: removedThumbnailFileNames)
+        try? removeStoredFiles(at: payloadsDirectoryURL, named: removedPayloadFileNames)
+        try? removeStoredFiles(at: thumbnailsDirectoryURL, named: removedThumbnailFileNames)
         return history
     }
 
@@ -144,10 +174,62 @@ final class ClipboardStore {
         }
 
         var item = history.remove(at: index)
+        item.firstCopiedAt = item.firstCopiedAt ?? item.copiedAt
         item.copiedAt = copiedAt
+        item.copyCount += 1
         history.insert(item, at: 0)
 
         try persist(history)
+        return history
+    }
+
+    func representationGroups(for item: ClipboardHistoryItem) throws -> [[ClipboardInlineRepresentation]] {
+        if case let .representations(groups) = item.payload {
+            return try groups.map { group in try group.map { descriptor in
+                ClipboardInlineRepresentation(data: try Data(contentsOf: payloadsDirectoryURL.appending(path: descriptor.fileName)), pasteboardType: descriptor.pasteboardType, suggestedFileExtension: descriptor.suggestedFileExtension)
+            } }
+        }
+        return [try payloadRepresentations(for: item)]
+    }
+
+    private func makeRepresentations(_ groups: [[ClipboardInlineRepresentation]]) throws -> StoredPayloadResult {
+        try fileStore.prepareDirectory(.clipboardPayloads)
+        var created: [String] = []
+        do {
+            let descriptors = try groups.map { group in try group.map { representation in
+                let name = payloadFileName(for: representation.suggestedFileExtension)
+                try representation.data.write(to: payloadsDirectoryURL.appending(path: name), options: .atomic)
+                created.append(name)
+                return ClipboardStoredRepresentationDescriptor(fileName: name, pasteboardType: representation.pasteboardType, suggestedFileExtension: representation.suggestedFileExtension)
+            } }
+            return StoredPayloadResult(descriptor: .representations(descriptors), createdFileNames: created)
+        } catch {
+            try? removeStoredFiles(at: payloadsDirectoryURL, named: created)
+            throw error
+        }
+    }
+
+    func thumbnailURL(for item: ClipboardHistoryItem) -> URL? { item.thumbnail.map { thumbnailsDirectoryURL.appending(path: $0.fileName) } }
+
+    var storageSize: String {
+        let directory = fileStore.url(for: .clipboard)
+        let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey])
+        var size: Int64 = 0
+        while let file = enumerator?.nextObject() as? URL { size += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+    func editText(_ id: UUID, text: String) throws -> [ClipboardHistoryItem] {
+        var history = try loadHistory()
+        guard let index = history.firstIndex(where: { $0.id == id }) else { return history }
+        let previous = history[index]
+        guard [.plainText, .richText, .figmaText].contains(previous.contentType) else { throw CocoaError(.featureUnsupported) }
+        let result = try makePayloadDescriptor(for: .inline(data: Data(text.utf8), pasteboardType: "public.utf8-plain-text", suggestedFileExtension: "txt"))
+        history[index].payload = result.descriptor
+        history[index].previewText = text
+        history[index].contentType = .plainText
+        history[index].contentHash = "edited::" + text
+        do { try persist(history) } catch { try? removeStoredFiles(at: payloadsDirectoryURL, named: result.createdFileNames); throw error }
+        try? removeDetachedFiles(previouslyStoredItems: [previous], retaining: history)
         return history
     }
 
@@ -230,6 +312,13 @@ final class ClipboardStore {
 
     private func persist(_ history: [ClipboardHistoryItem]) throws {
         try fileStore.prepareDirectory(.clipboard)
+        let backup = historyURL.deletingLastPathComponent().appending(path: "history-before-maccy-upgrade.json")
+        if fileManager.fileExists(atPath: historyURL.path), !fileManager.fileExists(atPath: backup.path) {
+            let legacy = try Data(contentsOf: historyURL)
+            if let rows = try JSONSerialization.jsonObject(with: legacy) as? [[String: Any]], rows.contains(where: { $0["copyCount"] == nil }) {
+                try fileManager.copyItem(at: historyURL, to: backup)
+            }
+        }
         let data = try encoder.encode(history)
         try data.write(to: historyURL, options: [.atomic])
     }
@@ -254,8 +343,8 @@ final class ClipboardStore {
         let removedThumbnailFileNames = Set(previouslyStoredItems.compactMap(\.thumbnailFileName))
             .subtracting(retainedThumbnailFileNames)
 
-        try removeStoredFiles(at: payloadsDirectoryURL, named: removedPayloadFileNames)
-        try removeStoredFiles(at: thumbnailsDirectoryURL, named: removedThumbnailFileNames)
+        try? removeStoredFiles(at: payloadsDirectoryURL, named: removedPayloadFileNames)
+        try? removeStoredFiles(at: thumbnailsDirectoryURL, named: removedThumbnailFileNames)
     }
 
     private func removeStoredFiles(
@@ -288,6 +377,8 @@ private extension ClipboardHistoryItem {
         switch payload {
         case let .inline(fileName, _, _):
             return [fileName]
+        case let .representations(groups):
+            return groups.flatMap { $0 }.map(\.fileName)
         case let .figma(representations):
             return representations.map(\.fileName)
         case .fileReferences:

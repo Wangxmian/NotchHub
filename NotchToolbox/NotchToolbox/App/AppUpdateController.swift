@@ -16,6 +16,12 @@ final class AppUpdateController: NSObject, ObservableObject {
     private var pendingPermissionReply: ((Bool) -> Void)?
     private var pendingInstallationReply: ((Bool) -> Void)?
     private var cancellation: (() -> Void)?
+    @Published var automaticallyChecksForUpdates = UserDefaults.standard.object(forKey: "NotchHub.automaticallyChecksForUpdates") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(automaticallyChecksForUpdates, forKey: "NotchHub.automaticallyChecksForUpdates") }
+    }
+    private let releaseUpdater = NotchHubReleaseUpdater()
+    private var releaseTask: Task<Void, Never>?
+    private var discoveredRelease: NotchHubReleaseUpdater.Release?
     private let postInstallMarker = "NotchHub.pendingUpdatedVersion"
 
     nonisolated override init() {
@@ -53,7 +59,9 @@ final class AppUpdateController: NSObject, ObservableObject {
     }
 
     var supportsInAppUpdates: Bool {
-        #if DIRECT_DISTRIBUTION && !LOCAL_CUSTOM
+        #if LOCAL_CUSTOM
+        true
+        #elseif DIRECT_DISTRIBUTION
         true
         #else
         false
@@ -61,7 +69,11 @@ final class AppUpdateController: NSObject, ObservableObject {
     }
 
     var canCheckForUpdates: Bool {
-        AppUpdateConfiguration.appcastURL != nil && supportsInAppUpdates
+        #if LOCAL_CUSTOM
+        return true
+        #else
+        return AppUpdateConfiguration.appcastURL != nil && supportsInAppUpdates
+        #endif
     }
 
     #if DIRECT_DISTRIBUTION && !LOCAL_CUSTOM
@@ -84,6 +96,9 @@ final class AppUpdateController: NSObject, ObservableObject {
     func start() {
         presentPostInstallNoticeIfNeeded()
         guard canCheckForUpdates else { return }
+        #if LOCAL_CUSTOM
+        if automaticallyChecksForUpdates { checkRelease(interactive: false) }
+        #endif
 
         #if DIRECT_DISTRIBUTION && !LOCAL_CUSTOM
         do {
@@ -104,6 +119,9 @@ final class AppUpdateController: NSObject, ObservableObject {
 
         guard canCheckForUpdates, isInteractionLocked == false else { return }
 
+        #if LOCAL_CUSTOM
+        if let discoveredRelease { downloadRelease(discoveredRelease) } else { checkRelease(interactive: true) }
+        #endif
         #if DIRECT_DISTRIBUTION && !LOCAL_CUSTOM
         guard updater.canCheckForUpdates else {
             showNotice("正在处理更新，请稍后。", emphasis: .info)
@@ -122,6 +140,13 @@ final class AppUpdateController: NSObject, ObservableObject {
     }
 
     func installPreparedUpdate() {
+        #if LOCAL_CUSTOM
+        if releaseUpdater.prepared != nil {
+            do { phase = .installing; isInstallationPromptPresented = false; try releaseUpdater.install() }
+            catch { phase = .failed(message: error.localizedDescription); showNotice("更新安装失败：" + error.localizedDescription, emphasis: .error) }
+            return
+        }
+        #endif
         guard let pendingInstallationReply,
               case let .readyToInstall(presentation) = phase else { return }
 
@@ -133,6 +158,9 @@ final class AppUpdateController: NSObject, ObservableObject {
     }
 
     func postponePreparedUpdate() {
+        #if LOCAL_CUSTOM
+        if releaseUpdater.prepared != nil { isInstallationPromptPresented = false; return }
+        #endif
         guard pendingInstallationReply != nil,
               case .readyToInstall = phase else { return }
 
@@ -156,6 +184,7 @@ final class AppUpdateController: NSObject, ObservableObject {
     }
 
     func cancelCurrentOperation() {
+        releaseTask?.cancel(); releaseTask = nil
         cancellation?()
         cancellation = nil
         phase = .idle
@@ -246,6 +275,38 @@ final class AppUpdateController: NSObject, ObservableObject {
         }
     }
     #endif
+
+    private func checkRelease(interactive: Bool) {
+        releaseTask?.cancel()
+        if interactive { phase = .checking }
+        releaseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let release = try await releaseUpdater.check()
+                try Task.checkCancellation()
+                let current = Self.currentVersion
+                if NotchHubReleaseUpdater.newer(release.tag_name, than: current) {
+                    discoveredRelease = release; isUpdateAvailable = true; phase = .idle
+                    if interactive { showNotice("有新版本 " + release.tag_name + "，点击下载更新。", emphasis: .info) }
+                } else { phase = .idle; if interactive { showNotice("已是最新版本", emphasis: .success) } }
+            } catch {
+                if !Task.isCancelled { phase = .idle; if interactive { showNotice("检查更新失败：" + error.localizedDescription, emphasis: .error) } }
+            }
+        }
+    }
+    private func downloadRelease(_ release: NotchHubReleaseUpdater.Release) {
+        releaseTask?.cancel()
+        releaseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let prepared = try await releaseUpdater.prepare(release) { [weak self] phase in self?.phase = phase }
+                try Task.checkCancellation()
+                phase = .readyToInstall(.init(version: prepared.version, releaseNotes: prepared.notes)); isInstallationPromptPresented = true
+            } catch {
+                if !Task.isCancelled { phase = .failed(message: error.localizedDescription); showNotice("下载更新失败：" + error.localizedDescription, emphasis: .error) }
+            }
+        }
+    }
 
     private func presentPostInstallNoticeIfNeeded() {
         guard let expectedVersion = UserDefaults.standard.string(forKey: postInstallMarker),

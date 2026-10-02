@@ -7,7 +7,7 @@ protocol SettingsPresenting: AnyObject {
 }
 
 enum SettingsWindowMetrics {
-    static let windowSize = CGSize(width: 600, height: 400)
+    static let windowSize = CGSize(width: 840, height: 560)
     static let cornerRadius: CGFloat = 16
     static let shadowMargin: CGFloat = 48
     static let outerSize = CGSize(
@@ -55,7 +55,8 @@ final class SettingsWindowController: SettingsPresenting {
                 onClose: { [weak panel] in
                     panel?.orderOut(nil)
                 },
-                analyticsReporter: compositionRoot.analyticsReporter
+                analyticsReporter: compositionRoot.analyticsReporter,
+                clipboardViewModel: compositionRoot.clipboardViewModel
             )
         )
         configurePanel()

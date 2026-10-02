@@ -397,7 +397,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Sign every nested executable in the direct-distribution bundle from the\n# inside out. Both nowplaying-cli and Sparkle contain nested code outside the\n# paths Xcode automatically re-signs. This runs before the app's final seal.\nset -e\n[ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ] && exit 0\nSIGN=\"/usr/bin/codesign --force --options runtime --timestamp --sign ${EXPANDED_CODE_SIGN_IDENTITY}\"\nBUNDLE=\"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/nowplaying-cli.bundle\"\nif [ -d \"${BUNDLE}\" ]; then\n  ${SIGN} \"${BUNDLE}/Contents/lib/nowplaying-cli/MediaRemoteMini.dylib\"\n  ${SIGN} \"${BUNDLE}\"\nfi\nSPARKLE=\"${CODESIGNING_FOLDER_PATH}/Contents/Frameworks/Sparkle.framework/Versions/Current\"\nif [ -d \"${SPARKLE}\" ]; then\n  ${SIGN} \"${SPARKLE}/Updater.app/Contents/MacOS/Updater\"\n  ${SIGN} \"${SPARKLE}/Updater.app\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Downloader.xpc/Contents/MacOS/Downloader\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Downloader.xpc\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Installer.xpc/Contents/MacOS/Installer\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Installer.xpc\"\n  ${SIGN} \"${SPARKLE}/Autoupdate\"\n  ${SIGN} \"${SPARKLE}\"\nfi\n";
+			shellScript = "# Sign every nested executable in the direct-distribution bundle from the\n# inside out. Both nowplaying-cli and Sparkle contain nested code outside the\n# paths Xcode automatically re-signs. This runs before the app's final seal.\nset -e\nNOTICES=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ThirdPartyLicenses\"\nmkdir -p \"${NOTICES}\"\ncp \"${SRCROOT}/Vendor/Maccy.LICENSE\" \"${SRCROOT}/Vendor/Fuse.LICENSE\" \"${SRCROOT}/Vendor/nowplaying-cli.LICENSE\" \"${SRCROOT}/../THIRD_PARTY_NOTICES.md\" \"${NOTICES}/\"\n[ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ] && exit 0\nSIGN=\"/usr/bin/codesign --force --options runtime --timestamp --sign ${EXPANDED_CODE_SIGN_IDENTITY}\"\nBUNDLE=\"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/nowplaying-cli.bundle\"\nif [ -d \"${BUNDLE}\" ]; then\n  ${SIGN} \"${BUNDLE}/Contents/lib/nowplaying-cli/MediaRemoteMini.dylib\"\n  ${SIGN} \"${BUNDLE}\"\nfi\nSPARKLE=\"${CODESIGNING_FOLDER_PATH}/Contents/Frameworks/Sparkle.framework/Versions/Current\"\nif [ -d \"${SPARKLE}\" ]; then\n  ${SIGN} \"${SPARKLE}/Updater.app/Contents/MacOS/Updater\"\n  ${SIGN} \"${SPARKLE}/Updater.app\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Downloader.xpc/Contents/MacOS/Downloader\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Downloader.xpc\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Installer.xpc/Contents/MacOS/Installer\"\n  ${SIGN} \"${SPARKLE}/XPCServices/Installer.xpc\"\n  ${SIGN} \"${SPARKLE}/Autoupdate\"\n  ${SIGN} \"${SPARKLE}\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -466,7 +466,7 @@
 				CODE_SIGN_ENTITLEMENTS = "NotchToolbox/NotchToolbox-AppStore.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_DEBUG_DYLIB = NO;
@@ -479,7 +479,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHub.appstore.debug;
 				PRODUCT_MODULE_NAME = NotchToolboxAppStore;
 				PRODUCT_NAME = NotchHubAppStore;
@@ -501,7 +501,7 @@
 				CODE_SIGN_ENTITLEMENTS = "NotchToolbox/NotchToolbox-AppStore.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -513,7 +513,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHub.appstore;
 				PRODUCT_MODULE_NAME = NotchToolboxAppStore;
 				PRODUCT_NAME = NotchHubAppStore;
@@ -532,11 +532,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubAppStoreTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -554,11 +554,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubAppStoreTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -699,7 +699,7 @@
 				CODE_SIGN_ENTITLEMENTS = NotchToolbox/NotchToolbox.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				EASYNOTCH_APPCAST_FEED_URL = "";
 				EASYNOTCH_UMAMI_ENDPOINT = "";
@@ -715,7 +715,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHub.debug;
 				PRODUCT_MODULE_NAME = NotchToolbox;
 				PRODUCT_NAME = NotchHub;
@@ -738,7 +738,7 @@
 				CODE_SIGN_ENTITLEMENTS = NotchToolbox/NotchToolbox.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				EASYNOTCH_APPCAST_FEED_URL = "";
 				EASYNOTCH_UMAMI_ENDPOINT = "";
@@ -753,7 +753,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHub;
 				PRODUCT_MODULE_NAME = NotchToolbox;
 				PRODUCT_NAME = NotchHub;
@@ -773,11 +773,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -795,11 +795,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -816,11 +816,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -836,11 +836,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.Wangxmian.NotchHubUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;

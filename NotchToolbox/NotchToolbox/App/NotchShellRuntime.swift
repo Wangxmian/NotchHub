@@ -18,6 +18,9 @@ final class NotchShellRuntime: NSObject {
     private let aiChatHistoryPruneDelay: Duration
     private let settingsPresenter: (any SettingsPresenting)?
     private var isStarted = false
+    private var clipboardPresentation: ClipboardPresentationCoordinator?
+    private var clipboardSettingsObserver: NSObjectProtocol?
+    private var clipboardAutomation: ClipboardAutomationBridge?
     private var aiChatHistoryPruneTask: Task<Void, Never>?
     private var settingsCancellables: Set<AnyCancellable> = []
     private var lastAppliedLaunchAtLogin: Bool?
@@ -191,12 +194,33 @@ final class NotchShellRuntime: NSObject {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        let clipboardPresentation = ClipboardPresentationCoordinator(model: compositionRoot.clipboardViewModel)
+        clipboardPresentation.openNotch = { [weak self] in
+            self?.coordinator.expand(moduleID: .clipboard)
+        }
+        clipboardPresentation.closeNotch = { [weak self] in
+            guard let self, self.compositionRoot.activeModule == .clipboard else { return }
+            self.coordinator.collapse(reason: .userDismiss)
+        }
+        clipboardPresentation.start()
+        self.clipboardPresentation = clipboardPresentation
+        clipboardAutomation = ClipboardAutomationBridge(core: compositionRoot.clipboardCore)
+        ClipboardIntentRegistry.model = compositionRoot.clipboardViewModel
+        clipboardSettingsObserver = NotificationCenter.default.addObserver(forName: .notchHubClipboardSettings, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.clipboardPresentation?.closeFloating()
+                self?.showSettings()
+                DispatchQueue.main.async { NotificationCenter.default.post(name: .init("NotchHub.focusClipboardSettings"), object: nil) }
+            }
+        }
         coordinator.start()
         onboardingCoordinator.activateScreen = { [weak self] screenID in
             self?.coordinator.refreshScreens(primaryScreenID: screenID)
         }
         onboardingCoordinator.start()
     }
+
+    func handleTermination() { compositionRoot.clipboardCore.handleTermination() }
 
     func showSettings() {
         settingsPresenter?.show(centeredOn: NSScreen.main?.visibleFrame)
@@ -205,6 +229,7 @@ final class NotchShellRuntime: NSObject {
     deinit {
         aiChatHistoryPruneTask?.cancel()
         NotificationCenter.default.removeObserver(self)
+        if let clipboardSettingsObserver { NotificationCenter.default.removeObserver(clipboardSettingsObserver) }
     }
 
     private func scheduleAIChatHistoryPrune() {

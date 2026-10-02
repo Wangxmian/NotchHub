@@ -95,7 +95,7 @@ extension PanelShellPresentation {
         case .aiChat:
             return CGSize(width: 580, height: 280)
         case .clipboard:
-            return ClipboardModuleLayout.listPanelBodySize
+            return CGSize(width: 580, height: 384)
         case .pomodoro:
             return CGSize(width: 580, height: 384)
         case .settings:
