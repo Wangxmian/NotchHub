@@ -99,6 +99,31 @@ import CoreText
         let groupItem = try store.save(groups, maxItems: 200).first!
         _ = try executor.write(item: groupItem)
         precondition(client.written.count == 2)
+        // Real AppKit roundtrips use a private pasteboard, never the user's clipboard.
+        let privateBoard = NSPasteboard.withUniqueName()
+        defer { privateBoard.releaseGlobally() }
+        let live = LiveClipboardPasteboardClient(pasteboard: privateBoard)
+        let liveExecutor = PasteExecutor(store: store, pasteboardClient: live)
+        let normalizer = ClipboardNormalizer()
+        for type in ["public.png", "public.tiff", "public.jpeg", "public.heic"] {
+            let payload = Data("Synthetic representation \(type)".utf8)
+            let boardItem = NSPasteboardItem(); boardItem.setData(payload, forType: .init(type))
+            try live.write(items: [boardItem])
+            let normalized = try normalizer.normalize(snapshot: live.snapshot(), sourceApp: nil)!
+            let stored = try store.save(normalized, maxItems: 200).first!
+            _ = try liveExecutor.write(item: stored, removeFormatting: true)
+            precondition(privateBoard.data(forType: .init(type)) == payload)
+        }
+        let urls = [root.appending(path: "first file.txt"), root.appending(path: "第二个文件.txt")]
+        for url in urls { try Data(url.lastPathComponent.utf8).write(to: url) }
+        try live.write(items: urls.map { url in
+            let item = NSPasteboardItem(); item.setString(url.absoluteString, forType: .fileURL); return item
+        })
+        let files = try normalizer.normalize(snapshot: live.snapshot(), sourceApp: nil)!
+        let savedFiles = try store.save(files, maxItems: 200).first!
+        _ = try liveExecutor.write(item: savedFiles)
+        let returnedFiles = privateBoard.pasteboardItems?.compactMap { $0.string(forType: .fileURL).flatMap(URL.init(string:))?.resolvingSymlinksInPath() }
+        precondition(returnedFiles == urls.map { $0.resolvingSymlinksInPath() })
         // Legacy JSON can decode missing metadata and migration creates a backup.
         var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode([pinned])) as! [[String: Any]]
         for key in ["firstCopiedAt","copyCount","pinKey","alias","ocrText"] { legacy[0].removeValue(forKey: key) }
@@ -122,6 +147,14 @@ import CoreText
         precondition(search.search("[", items: items, mode: "regexp").isEmpty)
         precondition(search.search("foo", items: items, mode: "mixed").map(\.id) == search.search("foo", items: items, mode: "exact").map(\.id))
         precondition(search.search("番茄", items: [item("写番茄钟")], mode: "exact").count == 1)
+        let baselineSearch = MaccySearchFixtures(makeItem: item)
+        baselineSearch.testSimpleSearch(); baselineSearch.testFuzzySearch(); baselineSearch.testRegexpSearch()
+        let performanceItems = (0..<999).map { item("Clipboard task \($0) 中文 performance sample") }
+        for mode in ["exact", "fuzzy", "regexp", "mixed"] {
+            let started = Date()
+            for _ in 0..<10 { _ = search.search("task", items: performanceItems, mode: mode) }
+            print("PERF: 999 records \(mode): \(Date().timeIntervalSince(started) * 100) ms/search (10 iterations)")
+        }
         // Exhaustive action truth table.
         let flags: [NSEvent.ModifierFlags] = [[], .command, .option, [.option,.shift], [.command,.shift]]
         let expected: [[ClipboardAction?]] = [[.copy,.copy,.paste,.pastePlainText,nil], [.copyPlainText,.copy,.pastePlainText,.paste,nil], [.paste,.paste,.copy,nil,.pastePlainText], [.pastePlainText,.pastePlainText,.copy,nil,.paste]]
@@ -259,4 +292,255 @@ import CoreText
 private final class TestSource: ClipboardSourceApplicationProviding {
     var bundle = "test.public"
     func currentSourceApplication() -> ClipboardSourceApplication? { .init(bundleID: bundle, name: bundle) }
+}
+
+
+// Search fixtures adapted from Maccy 2.7.1 SearchTests (MIT, Alex Rodionov).
+@MainActor private final class MaccySearchFixtures {
+    struct Expected: Equatable {
+        var score: Double?
+        var object: ClipboardHistoryItem
+        var ranges: [Range<String.Index>]
+        static func == (a: Self, b: Self) -> Bool {
+            a.score == b.score && a.object.id == b.object.id && a.ranges == b.ranges
+        }
+    }
+    var items: [ClipboardHistoryItem] = []
+    var mode = "exact"
+    let makeItem: (String) -> ClipboardHistoryItem
+    init(makeItem: @escaping (String) -> ClipboardHistoryItem) { self.makeItem = makeItem }
+    func XCTAssertEqual(_ actual: [Expected], _ expected: [Expected], file: StaticString = #filePath, line: UInt = #line) {
+        precondition(actual == expected, "Maccy search fixture mismatch", file: file, line: line)
+    }
+    func search(_ query: String) -> [Expected] {
+        ClipboardSearchService().search(query, items: items, mode: mode).map {
+            Expected(score: mode == "fuzzy" && !query.isEmpty ? $0.score : nil, object: $0.item, ranges: $0.ranges)
+        }
+    }
+    func range(from: Int, to: Int, in item: ClipboardHistoryItem) -> Range<String.Index> {
+        let title = item.title
+        return title.index(title.startIndex, offsetBy: from)..<title.index(title.startIndex, offsetBy: to + 1)
+    }
+  @MainActor
+  func testSimpleSearch() { // swiftlint:disable:this function_body_length
+    mode = "exact"
+    items = [
+      makeItem("foo bar baz"),
+      makeItem("foo bar zaz"),
+      makeItem("xxx yyy zzz")
+    ]
+
+    XCTAssertEqual(search(""), [
+      Expected(score: nil, object: items[0], ranges: []),
+      Expected(score: nil, object: items[1], ranges: []),
+      Expected(score: nil, object: items[2], ranges: [])
+    ])
+    XCTAssertEqual(search("z"), [
+      Expected(
+        score: nil,
+        object: items[0],
+        ranges: [range(from: 10, to: 10, in: items[0])]
+      ),
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 8, to: 8, in: items[1])]
+      ),
+      Expected(
+        score: nil,
+        object: items[2],
+        ranges: [range(from: 8, to: 8, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("foo"), [
+      Expected(
+        score: nil,
+        object: items[0],
+        ranges: [range(from: 0, to: 2, in: items[0])]
+      ),
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 0, to: 2, in: items[1])]
+      )
+    ])
+    XCTAssertEqual(search("za"), [
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 8, to: 9, in: items[1])]
+      )
+    ])
+    XCTAssertEqual(search("yyy"), [
+      Expected(
+        score: nil,
+        object: items[2],
+        ranges: [range(from: 4, to: 6, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("fbb"), [])
+    XCTAssertEqual(search("m"), [])
+  }
+
+  @MainActor
+  func testFuzzySearch() { // swiftlint:disable:this function_body_length
+    mode = "fuzzy"
+    items = [
+      makeItem("foo bar baz"),
+      makeItem("foo bar zaz"),
+      makeItem("xxx yyy zzz")
+    ]
+
+    XCTAssertEqual(search(""), [
+      Expected(score: nil, object: items[0], ranges: []),
+      Expected(score: nil, object: items[1], ranges: []),
+      Expected(score: nil, object: items[2], ranges: [])
+    ])
+    XCTAssertEqual(search("z"), [
+      Expected(
+        score: 0.08,
+        object: items[1],
+        ranges: [range(from: 8, to: 8, in: items[1]), range(from: 10, to: 10, in: items[1])]
+      ),
+      Expected(
+        score: 0.08,
+        object: items[2],
+        ranges: [range(from: 8, to: 10, in: items[2])]
+      ),
+      Expected(
+        score: 0.1,
+        object: items[0],
+        ranges: [range(from: 10, to: 10, in: items[0])]
+      )
+    ])
+    XCTAssertEqual(search("foo"), [
+      Expected(
+        score: 0.0,
+        object: items[0],
+        ranges: [range(from: 0, to: 2, in: items[0])]
+      ),
+      Expected(
+        score: 0.0,
+        object: items[1],
+        ranges: [range(from: 0, to: 2, in: items[1])]
+      )
+    ])
+    XCTAssertEqual(search("za"), [
+      Expected(
+        score: 0.08,
+        object: items[1],
+        ranges: [range(from: 5, to: 5, in: items[1]), range(from: 8, to: 9, in: items[1])]
+      ),
+      Expected(
+        score: 0.54,
+        object: items[0],
+        ranges: [range(from: 5, to: 5, in: items[0]), range(from: 9, to: 10, in: items[0])]
+      ),
+      Expected(
+        score: 0.58,
+        object: items[2],
+        ranges: [range(from: 8, to: 10, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("yyy"), [
+      Expected(
+        score: 0.04,
+        object: items[2],
+        ranges: [range(from: 4, to: 6, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("fbb"), [
+      Expected(
+        score: 0.6666666666666666,
+        object: items[0],
+        ranges: [
+          range(from: 0, to: 0, in: items[0]),
+          range(from: 4, to: 4, in: items[0]),
+          range(from: 8, to: 8, in: items[0])
+        ]
+      ),
+      Expected(
+        score: 0.6666666666666666,
+        object: items[1],
+        ranges: [range(from: 0, to: 0, in: items[1]), range(from: 4, to: 4, in: items[1])])
+    ])
+    XCTAssertEqual(search("m"), [])
+  }
+
+  @MainActor
+  func testRegexpSearch() { // swiftlint:disable:this function_body_length
+    mode = "regexp"
+    items = [
+      makeItem("foo bar baz"),
+      makeItem("foo bar zaz"),
+      makeItem("xxx yyy zzz")
+    ]
+
+    XCTAssertEqual(search(""), [
+      Expected(score: nil, object: items[0], ranges: []),
+      Expected(score: nil, object: items[1], ranges: []),
+      Expected(score: nil, object: items[2], ranges: [])
+    ])
+    XCTAssertEqual(search("z+"), [
+      Expected(
+        score: nil,
+        object: items[0],
+        ranges: [range(from: 10, to: 10, in: items[0])]
+      ),
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 8, to: 8, in: items[1])]
+      ),
+      Expected(
+        score: nil,
+        object: items[2],
+        ranges: [range(from: 8, to: 10, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("z*"), [
+      Expected(
+        score: nil,
+        object: items[0],
+        ranges: [range(from: 0, to: -1, in: items[0])]
+      ),
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 0, to: -1, in: items[1])]
+      ),
+      Expected(
+        score: nil,
+        object: items[2],
+        ranges: [range(from: 0, to: -1, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("^foo"), [
+      Expected(
+        score: nil,
+        object: items[0], ranges: [range(from: 0, to: 2, in: items[0])]
+      ),
+      Expected(
+        score: nil,
+        object: items[1], ranges: [range(from: 0, to: 2, in: items[1])]
+      )
+    ])
+    XCTAssertEqual(search(" za"), [
+      Expected(
+        score: nil,
+        object: items[1],
+        ranges: [range(from: 7, to: 9, in: items[1])]
+      )
+    ])
+    XCTAssertEqual(search("[y]+"), [
+      Expected(
+        score: nil,
+        object: items[2],
+        ranges: [range(from: 4, to: 6, in: items[2])]
+      )
+    ])
+    XCTAssertEqual(search("fbb"), [])
+    XCTAssertEqual(search("m"), [])
+  }
+
 }

@@ -2,7 +2,6 @@ name: Clipboard parity validation
 on:
   push:
     branches: [clipboard-maccy-parity]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
