@@ -18,6 +18,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -46,6 +47,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -70,6 +72,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -94,6 +97,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -119,6 +123,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -157,6 +162,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -189,6 +195,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -230,6 +237,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true,
             globalShortcutService: shortcutService
@@ -270,6 +278,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true,
             globalShortcutService: shortcutService
@@ -304,6 +313,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true,
             globalShortcutService: shortcutService,
@@ -347,6 +357,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true,
             launchAtLoginService: launchAtLoginService
@@ -375,6 +386,7 @@ struct NotchShellRuntimeTests {
                 Self.externalSnapshot(id: "external")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "external",
             simulateNotchOnNonNotchScreen: false
         )
@@ -401,6 +413,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -409,9 +422,15 @@ struct NotchShellRuntimeTests {
         interactions.fileDragEntered(screenID: "built-in")
         await Task.yield()
 
+        #if LOCAL_CUSTOM
+        #expect(compositionRoot.activeModule == .music)
+        #expect(compositionRoot.fileStashViewModel.phase == .expandedEmpty)
+        #expect(presenter.presentations.last?.state != .expanded(screenID: "built-in", moduleID: .fileStash))
+        #else
         #expect(compositionRoot.activeModule == .fileStash)
         #expect(compositionRoot.fileStashViewModel.phase == .dragHoverImport)
         #expect(presenter.presentations.last?.state == .expanded(screenID: "built-in", moduleID: .fileStash))
+        #endif
     }
 
     @Test func fileDragExitingHotzoneClearsFileStashImportPrompt() async throws {
@@ -425,6 +444,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -436,7 +456,11 @@ struct NotchShellRuntimeTests {
         await Task.yield()
 
         #expect(compositionRoot.fileStashViewModel.phase == .expandedEmpty)
+        #if LOCAL_CUSTOM
+        #expect(presenter.presentations.last?.state != .expanded(screenID: "built-in", moduleID: .fileStash))
+        #else
         #expect(presenter.presentations.last?.state == .expanded(screenID: "built-in", moduleID: .fileStash))
+        #endif
     }
 
     @Test func manuallyOpeningFileStashClearsAStaleDropPrompt() async throws {
@@ -450,6 +474,7 @@ struct NotchShellRuntimeTests {
                 Self.notchSnapshot(id: "built-in")
             ]),
             panelPresenter: presenter,
+            clipboardSystemIntegration: false,
             primaryScreenID: "built-in",
             simulateNotchOnNonNotchScreen: true
         )
@@ -457,7 +482,11 @@ struct NotchShellRuntimeTests {
         runtime.start()
         interactions.fileDragEntered(screenID: "built-in")
         await Task.yield()
+        #if LOCAL_CUSTOM
+        #expect(compositionRoot.fileStashViewModel.phase == .expandedEmpty)
+        #else
         #expect(compositionRoot.fileStashViewModel.phase == .dragHoverImport)
+        #endif
 
         // Simulate a missed drop-exit callback followed by a normal click-open.
         interactions.expand(screenID: "built-in", moduleID: .fileStash)

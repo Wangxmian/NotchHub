@@ -44,7 +44,7 @@ final class SettingsWindowController: SettingsPresenting {
         viewModel.attachAnalytics(compositionRoot.analyticsReporter)
         self.panel = SettingsPanel(
             contentRect: NSRect(origin: .zero, size: SettingsWindowMetrics.outerSize),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -64,7 +64,7 @@ final class SettingsWindowController: SettingsPresenting {
 
     func show(centeredOn screenFrame: CGRect?) {
         let targetScreenFrame = screenFrame ?? NSScreen.main?.visibleFrame ?? NSScreen.main?.frame ?? .zero
-        let size = SettingsWindowMetrics.outerSize
+        let size = panel.frame.size
         let frame = NSRect(
             x: targetScreenFrame.midX - size.width / 2,
             y: targetScreenFrame.midY - size.height / 2,
@@ -79,6 +79,7 @@ final class SettingsWindowController: SettingsPresenting {
     }
 
     private func configurePanel() {
+        panel.minSize = SettingsWindowMetrics.outerSize
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false

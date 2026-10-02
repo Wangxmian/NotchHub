@@ -220,6 +220,8 @@ struct RestVariantStoreTests {
             )
         )
 
+        var transitions: [NotchModuleID] = []
+        store.onResolvedPresentationChange = { if let id = $0.activeRequest?.moduleID { transitions.append(id) } }
         let firstToken = UUID()
         let secondToken = UUID()
         let firstDeclaredAt = Date()
@@ -250,15 +252,8 @@ struct RestVariantStoreTests {
 
         #expect(store.resolvedPresentation.activeRequest?.moduleID == .pomodoro)
 
-        #expect(await Self.waitUntil {
-            store.resolvedPresentation.activeRequest?.moduleID == .music
-        })
-        #expect(store.resolvedPresentation.activeRequest?.moduleID == .music)
-
-        #expect(await Self.waitUntil {
-            store.resolvedPresentation.activeRequest?.moduleID == .clipboard
-        })
-        #expect(store.resolvedPresentation.activeRequest?.moduleID == .clipboard)
+        #expect(await Self.waitUntil { transitions.count >= 3 })
+        #expect(Array(transitions.prefix(3)) == [.pomodoro, .music, .clipboard])
     }
 
     private static func waitUntil(

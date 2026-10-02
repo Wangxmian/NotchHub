@@ -129,6 +129,35 @@ import CoreText
             var p = ClipboardPreferences(); p.pasteByDefault = index >= 2; p.removeFormattingByDefault = index % 2 == 1
             for (i, flag) in flags.enumerated() { precondition(ClipboardActionResolver.resolve(flag, preferences: p) == expected[index][i]) }
         }
+        // Dispatch actual Return events through the view model, including modifier flags.
+        client.types = ["public.utf8-plain-text", "public.rtf"]
+        client.dataOverride = ["public.utf8-plain-text": Data("dispatch rich".utf8), "public.rtf": Data(#"{\rtf1 dispatch rich}"#.utf8)]
+        capture("dispatch rich"); client.dataOverride = nil; client.types = ["public.utf8-plain-text"]
+        let dispatchID = core.history.first!.id
+        let dispatchRepresentations = try core.representationGroups(core.history.first!).flatMap { $0 }
+        precondition(dispatchRepresentations.contains { $0.pasteboardType == "public.rtf" }, "Dispatch sample lost RTF")
+        var pasteRequests = 0
+        let dispatchModel = ClipboardViewModel(core: core, directPasteHandler: { pasteRequests += 1 })
+        dispatchModel.isPresented = true; dispatchModel.refresh()
+        for index in 0..<4 {
+            try core.updatePreferences { $0.pasteByDefault = index >= 2; $0.removeFormattingByDefault = index % 2 == 1 }
+            for (i, flag) in flags.enumerated() {
+                dispatchModel.selectedID = dispatchID
+                let before = client.changeCount; let previousRequests = pasteRequests
+                let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flag, timestamp: 0, windowNumber: 0, context: nil,
+                    characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+                precondition(dispatchModel.handleKey(event) == nil)
+                let action = expected[index][i]
+                precondition((client.changeCount != before) == (action != nil))
+                precondition(pasteRequests - previousRequests == ([ClipboardAction.paste, .pastePlainText].contains(where: { $0 == action }) ? 1 : 0))
+                if let action {
+                    let plain = action == .pastePlainText || action == .copyPlainText
+                    precondition(client.written[0].types.contains(.rtf) != plain, "dispatch index \(index) flags \(i) expected \(action) types \(client.written[0].types)")
+                    precondition(client.written[0].string(forType: .string) == "dispatch rich")
+                }
+            }
+        }
+        dispatchModel.isPresented = false
         try core.updatePreferences { $0.clipboardCheckInterval = -1; $0.imageMaxHeight = 999; $0.previewDelay = 0 }
         precondition(core.preferences.clipboardCheckInterval == 0.05 && core.preferences.imageMaxHeight == 200 && core.preferences.previewDelay == 200)
         // Script bridge uses an isolated defaults suite and never changes user history.
@@ -138,6 +167,34 @@ import CoreText
         withExtendedLifetime(bridge) {}; ud.removePersistentDomain(forName: suite)
         precondition(NotchHubReleaseUpdater.newer("v1.10.0", than: "1.9.0"))
         precondition(!NotchHubReleaseUpdater.newer("v1.2.0", than: "1.3.0"))
+        // Retention follows the selected sort while always keeping the new copy.
+        let retention = try ClipboardStore(fileStore: LocalFileStore(baseURL: root.appending(path: "retention")))
+        var frequency = ClipboardPreferences(); frequency.sortBy = "numberOfCopies"
+        func record(_ text: String) -> ClipboardCapture {
+            .init(contentType: .plainText, previewText: text, contentHash: text, capturedAt: Date(), sourceAppBundleID: "first.source", sourceAppName: "First Source",
+                  payload: .inline(data: Data(text.utf8), pasteboardType: "public.utf8-plain-text", suggestedFileExtension: "txt"))
+        }
+        let frequent = try retention.save(record("frequent"), maxItems: 2, preferences: frequency).first!.id
+        _ = try retention.promote(itemID: frequent, copiedAt: Date()); _ = try retention.promote(itemID: frequent, copiedAt: Date())
+        _ = try retention.save(record("rare"), maxItems: 2, preferences: frequency)
+        let retainedRows = try retention.save(record("new"), maxItems: 2, preferences: frequency)
+        precondition(Set(retainedRows.map(\.previewText)) == ["frequent", "new"])
+        var external = record("frequent"); external.sourceAppBundleID = "second.source"
+        let duplicateRows = try retention.save(external, maxItems: 2, preferences: frequency)
+        precondition(duplicateRows.first!.sourceAppBundleID == "first.source")
+        // All preference fields survive a restart, including cleared custom shortcuts.
+        var configured = ClipboardPreferences()
+        configured.searchMode = "mixed"; configured.pasteByDefault = true; configured.removeFormattingByDefault = true
+        configured.enabledPasteboardTypes = ["public.png"]; configured.sortBy = "numberOfCopies"; configured.popupPosition = "lastPosition"; configured.popupScreen = 2
+        configured.windowWidth = 620; configured.windowHeight = 480; configured.windowX = 0.2; configured.windowY = 0.7; configured.previewWidth = 250
+        configured.pinTo = "bottom"; configured.imageMaxHeight = 60; configured.openPreviewAutomatically = false; configured.previewDelay = 300; configured.highlightMatch = "underline"
+        configured.showSpecialSymbols = false; configured.showInStatusBar = false; configured.menuIcon = "paperclip"; configured.showRecentCopyInMenuBar = true
+        configured.showSearch = false; configured.searchVisibility = "duringSearch"; configured.showTitle = false; configured.showApplicationIcons = true; configured.showHexColorSwatch = false; configured.showFooter = false
+        configured.ignoredApps = ["ignored.app"]; configured.ignoreAllAppsExceptListed = true; configured.ignoredPasteboardTypes = ["test.type"]; configured.ignoreRegexp = ["^secret"]
+        configured.ignoreEvents = true; configured.ignoreOnlyNextEvent = true; configured.clearOnQuit = true; configured.clearSystemClipboard = true; configured.suppressClearAlert = true; configured.clipboardCheckInterval = 0.1
+        configured.popupShortcut = nil; configured.pinShortcut = nil; configured.deleteShortcut = nil; configured.previewShortcut = nil; configured.openInNotch = true
+        let reopened = try JSONDecoder().decode(ClipboardPreferences.self, from: JSONEncoder().encode(configured))
+        precondition(reopened == configured)
         // Geometry covers right-edge reversal, a negative-origin display and oversized preferences.
         let screen = CGRect(x: -1200, y: 0, width: 1200, height: 800)
         let left = ClipboardPopupLayout.fit(list: CGRect(x: -450, y: 0, width: 450, height: 800), screen: screen, previewWidth: 400)
@@ -167,7 +224,7 @@ import CoreText
         let recognized = core.history.first { $0.id == ocrItem.id }!
         precondition(recognized.ocrText?.contains("NOTCHHUB") == true, "Vision OCR failed to recognize sample")
         precondition(search.search("OCR TEST", items: [recognized], mode: "exact").count == 1)
-        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 action combinations, setting bounds, script bridge, footer navigation, intent bounds, screen geometry and real Vision OCR")
+        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 resolver and dispatched action combinations, setting bounds, script bridge, footer navigation, intent bounds, screen geometry and real Vision OCR")
     }
 }
 @MainActor private final class TestPasteboard: ClipboardPasteboardClient {
@@ -176,9 +233,10 @@ import CoreText
     var types = ["public.utf8-plain-text"]
     var written: [NSPasteboardItem] = []
     var revision: Int?
+    var dataOverride: [String: Data]?
     func copy(_ value: String) { text = value; changeCount += 1 }
     func snapshot() -> ClipboardPasteboardSnapshot {
-        var data = ["public.utf8-plain-text": Data(text.utf8)]
+        var data = dataOverride ?? ["public.utf8-plain-text": Data(text.utf8)]
         if let revision { data["x.nspasteboard.ModifiedType"] = Data(String(revision).utf8) }
         return .init(changeCount: changeCount, availableTypes: types, dataByType: data, fileURLs: [])
     }

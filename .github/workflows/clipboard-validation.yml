@@ -41,7 +41,7 @@ jobs:
             python3 - <<'PYCODE'
           from pathlib import Path
           lines = Path('native-tests.log').read_text(errors='replace').splitlines()
-          errors = [line for line in lines if 'error:' in line or 'failed' in line.lower()]
+          errors = [line for line in lines if 'error:' in line or "' failed on " in line or 'recorded an issue' in line or 'Expectation failed' in line]
           for line in (errors or lines[-25:])[:40]:
               print('::error::' + line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
           PYCODE

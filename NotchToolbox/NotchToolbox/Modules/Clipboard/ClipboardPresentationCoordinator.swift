@@ -41,7 +41,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
                 if event.type == .keyDown, self.model.matches(event, shortcut: self.model.preferences.popupShortcut) { self.hotKey(); return nil }
                 if event.type == .flagsChanged, self.model.isPresented {
                     let released = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
-                    if released && self.cycle { self.cycle = false; self.model.activateSelection() }
+                    if released && self.cycle { self.cycle = false; self.model.activateSelection(flags: []) }
                     if released { self.opening = false }
                     return event
                 }
@@ -203,6 +203,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
         return NSPoint(x: min(max(point.x, frame.minX), frame.maxX-size.width), y: min(max(point.y, frame.minY), frame.maxY-size.height))
     }
     deinit {
+        if let item = statusItem { Task { @MainActor in NSStatusBar.system.removeStatusItem(item) } }
         if let monitor { NSEvent.removeMonitor(monitor) }; if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
     }
 }

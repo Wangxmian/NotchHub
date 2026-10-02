@@ -47,6 +47,51 @@ nonisolated struct ClipboardPreferences: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case searchMode, pasteByDefault, removeFormattingByDefault, enabledPasteboardTypes, sortBy, popupPosition, popupScreen, windowWidth, windowHeight, windowX, windowY, previewWidth, pinTo, imageMaxHeight, openPreviewAutomatically, previewDelay, highlightMatch, showSpecialSymbols, showInStatusBar, menuIcon, showRecentCopyInMenuBar, showSearch, searchVisibility, showTitle, showApplicationIcons, showHexColorSwatch, showFooter, ignoredApps, ignoreAllAppsExceptListed, ignoredPasteboardTypes, ignoreRegexp, ignoreEvents, ignoreOnlyNextEvent, clearOnQuit, clearSystemClipboard, suppressClearAlert, clipboardCheckInterval, popupShortcut, pinShortcut, deleteShortcut, previewShortcut, openInNotch
     }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(searchMode, forKey: .searchMode)
+        try c.encode(pasteByDefault, forKey: .pasteByDefault)
+        try c.encode(removeFormattingByDefault, forKey: .removeFormattingByDefault)
+        try c.encode(enabledPasteboardTypes, forKey: .enabledPasteboardTypes)
+        try c.encode(sortBy, forKey: .sortBy)
+        try c.encode(popupPosition, forKey: .popupPosition)
+        try c.encode(popupScreen, forKey: .popupScreen)
+        try c.encode(windowWidth, forKey: .windowWidth)
+        try c.encode(windowHeight, forKey: .windowHeight)
+        try c.encode(windowX, forKey: .windowX)
+        try c.encode(windowY, forKey: .windowY)
+        try c.encode(previewWidth, forKey: .previewWidth)
+        try c.encode(pinTo, forKey: .pinTo)
+        try c.encode(imageMaxHeight, forKey: .imageMaxHeight)
+        try c.encode(openPreviewAutomatically, forKey: .openPreviewAutomatically)
+        try c.encode(previewDelay, forKey: .previewDelay)
+        try c.encode(highlightMatch, forKey: .highlightMatch)
+        try c.encode(showSpecialSymbols, forKey: .showSpecialSymbols)
+        try c.encode(showInStatusBar, forKey: .showInStatusBar)
+        try c.encode(menuIcon, forKey: .menuIcon)
+        try c.encode(showRecentCopyInMenuBar, forKey: .showRecentCopyInMenuBar)
+        try c.encode(showSearch, forKey: .showSearch)
+        try c.encode(searchVisibility, forKey: .searchVisibility)
+        try c.encode(showTitle, forKey: .showTitle)
+        try c.encode(showApplicationIcons, forKey: .showApplicationIcons)
+        try c.encode(showHexColorSwatch, forKey: .showHexColorSwatch)
+        try c.encode(showFooter, forKey: .showFooter)
+        try c.encode(ignoredApps, forKey: .ignoredApps)
+        try c.encode(ignoreAllAppsExceptListed, forKey: .ignoreAllAppsExceptListed)
+        try c.encode(ignoredPasteboardTypes, forKey: .ignoredPasteboardTypes)
+        try c.encode(ignoreRegexp, forKey: .ignoreRegexp)
+        try c.encode(ignoreEvents, forKey: .ignoreEvents)
+        try c.encode(ignoreOnlyNextEvent, forKey: .ignoreOnlyNextEvent)
+        try c.encode(clearOnQuit, forKey: .clearOnQuit)
+        try c.encode(clearSystemClipboard, forKey: .clearSystemClipboard)
+        try c.encode(suppressClearAlert, forKey: .suppressClearAlert)
+        try c.encode(clipboardCheckInterval, forKey: .clipboardCheckInterval)
+        if let value = popupShortcut { try c.encode(value, forKey: .popupShortcut) } else { try c.encodeNil(forKey: .popupShortcut) }
+        if let value = pinShortcut { try c.encode(value, forKey: .pinShortcut) } else { try c.encodeNil(forKey: .pinShortcut) }
+        if let value = deleteShortcut { try c.encode(value, forKey: .deleteShortcut) } else { try c.encodeNil(forKey: .deleteShortcut) }
+        if let value = previewShortcut { try c.encode(value, forKey: .previewShortcut) } else { try c.encodeNil(forKey: .previewShortcut) }
+        try c.encode(openInNotch, forKey: .openInNotch)
+    }
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)

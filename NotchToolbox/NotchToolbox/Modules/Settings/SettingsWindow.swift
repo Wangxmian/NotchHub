@@ -27,7 +27,7 @@ struct SettingsWindow: View {
                 sidebar
                     .frame(width: 200)
                 content
-                    .frame(width: SettingsWindowMetrics.windowSize.width - 200)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: SettingsWindowMetrics.cornerRadius, style: .continuous))
 
@@ -86,9 +86,10 @@ struct SettingsWindow: View {
                 }
             }
         }
-        .frame(width: SettingsWindowMetrics.windowSize.width, height: SettingsWindowMetrics.windowSize.height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .shadow(color: .black.opacity(0.40), radius: 20, y: 8)
-        .frame(width: SettingsWindowMetrics.outerSize.width, height: SettingsWindowMetrics.outerSize.height)
+        .padding(SettingsWindowMetrics.shadowMargin)
+        .frame(minWidth: SettingsWindowMetrics.outerSize.width, minHeight: SettingsWindowMetrics.outerSize.height)
         .preferredColorScheme(.dark)
         .animation(.easeOut(duration: 0.12), value: viewModel.providerDraft)
         .onReceive(NotificationCenter.default.publisher(for: .init("NotchHub.focusClipboardSettings"))) { _ in selectedTab = .clipboard }

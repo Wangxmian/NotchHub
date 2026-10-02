@@ -1,3 +1,4 @@
+import AppKit
 import Carbon
 import Foundation
 import ServiceManagement
@@ -51,7 +52,7 @@ final class CarbonGlobalShortcutService: GlobalShortcutServicing {
     ) throws {
         unregister()
 
-        let keyCode = try KeyboardShortcutCarbonMapper.keyCode(for: shortcut.keyEquivalent)
+        let keyCode = try KeyboardShortcutCarbonMapper.keyCode(for: shortcut.keyEquivalent, command: shortcut.modifiers.contains(.command))
         let modifiers = KeyboardShortcutCarbonMapper.modifiers(for: shortcut.modifiers)
         var hotKeyID = EventHotKeyID(
             signature: KeyboardShortcutCarbonMapper.signature,
@@ -144,11 +145,12 @@ enum GlobalShortcutError: Error, Equatable {
 enum KeyboardShortcutCarbonMapper {
     static let signature: OSType = 0x4E544348
 
-    static func keyCode(for keyEquivalent: String) throws -> UInt32 {
+    static func keyCode(for keyEquivalent: String, command: Bool = false) throws -> UInt32 {
         guard let character = keyEquivalent.lowercased().first else {
             throw GlobalShortcutError.unsupportedKey(keyEquivalent)
         }
 
+        if command && commandSwitchesToQWERTY, let code = keyCodes[character] { return code }
         if let code = currentLayoutKeyCode(String(character)) { return code }
         guard let code = keyCodes[character] else {
             throw GlobalShortcutError.unsupportedKey(keyEquivalent)
@@ -157,6 +159,17 @@ enum KeyboardShortcutCarbonMapper {
         return code
     }
 
+    static func keyEquivalent(for code: UInt16, command: Bool = false) -> String? {
+        if command && commandSwitchesToQWERTY { return keyCodes.first { $0.value == UInt32(code) }.map { String($0.key) } }
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue()
+        guard let bytes = CFDataGetBytePtr(data) else { return nil }
+        let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
+        var state: UInt32 = 0; var count = 0; var buffer = [UniChar](repeating: 0, count: 8)
+        guard UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysBit), &state, buffer.count, &count, &buffer) == noErr else { return nil }
+        return String(utf16CodeUnits: buffer, count: count).lowercased()
+    }
     static func currentLayoutKeyCode(_ character: String) -> UInt32? {
         guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
               let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
@@ -209,7 +222,7 @@ enum KeyboardShortcutCarbonMapper {
 enum KeyboardShortcutConflictValidator {
     static func isAvailable(_ shortcut: KeyboardShortcutDescriptor) -> Bool {
         do {
-            let keyCode = try KeyboardShortcutCarbonMapper.keyCode(for: shortcut.keyEquivalent)
+            let keyCode = try KeyboardShortcutCarbonMapper.keyCode(for: shortcut.keyEquivalent, command: shortcut.modifiers.contains(.command))
             let modifiers = KeyboardShortcutCarbonMapper.modifiers(for: shortcut.modifiers)
             var hotKeyID = EventHotKeyID(
                 signature: KeyboardShortcutCarbonMapper.signature,

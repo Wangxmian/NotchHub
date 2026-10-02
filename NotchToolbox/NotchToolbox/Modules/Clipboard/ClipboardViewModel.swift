@@ -60,6 +60,7 @@ final class ClipboardViewModel: ObservableObject {
         if let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier != Bundle.main.bundleIdentifier { targetApplication = app }
     }
     private func sendPasteToTarget() {
+        if let directPasteHandler { directPasteHandler(); return }
         guard AXIsProcessTrusted() else {
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
@@ -121,14 +122,14 @@ final class ClipboardViewModel: ObservableObject {
         else if preferences.showFooter, selectedID == results.last?.id { selectedID = nil; selectedFooter = 0 }
         else { selectedID = results.last?.id }
     }
-    func activateSelection() {
-        if let footer = selectedFooter { activateFooter(footer); return }
-        if let id = selectedID { perform(id) }
+    func activateSelection(flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
+        if let footer = selectedFooter { activateFooter(footer, flags: flags); return }
+        if let id = selectedID { if let action = ClipboardActionResolver.resolve(flags, preferences: preferences) { perform(id, action: action) } }
         else { do { try core.copyQuery(query); query = "" } catch { reportPasteError(error.localizedDescription) } }
     }
-    func activateFooter(_ index: Int) {
+    func activateFooter(_ index: Int, flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
         switch index {
-        case 0: clear(includingPinned: NSEvent.modifierFlags.contains(.shift))
+        case 0: clear(includingPinned: flags.contains(.shift))
         case 1: showSettings()
         case 2: showSettings(); NotificationCenter.default.post(name: .init("NotchHub.about"), object: nil)
         default: NSApp.terminate(nil)
@@ -167,9 +168,9 @@ final class ClipboardViewModel: ObservableObject {
     }
     func handleKey(_ event: NSEvent) -> NSEvent? {
         guard isPresented else { return event }
-        if let input = NSApp.keyWindow?.firstResponder as? NSTextView, input.hasMarkedText() { return event }
+        if let input = NSApp?.keyWindow?.firstResponder as? NSTextView, input.hasMarkedText() { return event }
         let f = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let key = KeyboardShortcutCarbonMapper.keyEquivalent(for: event.keyCode, command: f.contains(.command)) ?? event.charactersIgnoringModifiers?.lowercased() ?? ""
         if event.keyCode == 53 { closePresentation?(); return nil }
         if f == .command && key == "," { showSettings(); return nil }
         if f == .command && key == "q" { NSApp.terminate(nil); return nil }
@@ -178,7 +179,7 @@ final class ClipboardViewModel: ObservableObject {
         if matches(event, shortcut: preferences.deleteShortcut) { if let id = selectedID { delete(id) }; return nil }
         if matches(event, shortcut: preferences.previewShortcut) { previewVisible.toggle(); return nil }
         if [36, 76].contains(event.keyCode) {
-            activateSelection()
+            activateSelection(flags: f)
             return nil
         }
         let controlNavigation: [NSEvent.ModifierFlags] = [.control, [.control, .shift], [.control, .option], [.control, .option, .shift]]
@@ -197,19 +198,20 @@ final class ClipboardViewModel: ObservableObject {
             if key == "h" { focusRequest += 1; if !query.isEmpty { query.removeLast() }; return nil }
             if key == "w" { focusRequest += 1; let rest = query.split(separator: " ").dropLast().joined(separator: " "); query = rest.isEmpty ? "" : rest + " "; return nil }
         }
-        if !f.isEmpty, ClipboardActionResolver.resolve(f, preferences: preferences) != nil {
+        if !f.isEmpty, let action = ClipboardActionResolver.resolve(f, preferences: preferences) {
             let ordinary = results.filter { !$0.item.isPinned }
-            if let number = Int(key), (1...9).contains(number), number <= ordinary.count { perform(ordinary[number-1].id); return nil }
-            if let item = results.first(where: { $0.item.pinKey == key && !key.isEmpty }) { perform(item.id); return nil }
+            if let number = Int(key), (1...9).contains(number), number <= ordinary.count { perform(ordinary[number-1].id, action: action); return nil }
+            if let item = results.first(where: { $0.item.pinKey == key && !key.isEmpty }) { perform(item.id, action: action); return nil }
         }
         return event
     }
     func matches(_ event: NSEvent, shortcut: KeyboardShortcutDescriptor?) -> Bool {
         guard let shortcut else { return false }
         let flags = shortcut.modifiers.reduce(NSEvent.ModifierFlags()) { partial, item in partial.union(item.eventFlags) }
-        return event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function]) == flags && event.charactersIgnoringModifiers?.lowercased() == shortcut.keyEquivalent.lowercased()
+        return event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function]) == flags && UInt32(event.keyCode) == (try? KeyboardShortcutCarbonMapper.keyCode(for: shortcut.keyEquivalent, command: flags.contains(.command)))
     }
 
+    private let directPasteHandler: (() -> Void)?
     private let thumbnailsDirectoryURL: URL?
     private let referenceValidator: ClipboardReferenceValidator
     private let successPhaseDuration: Duration
@@ -225,9 +227,11 @@ final class ClipboardViewModel: ObservableObject {
         referenceValidator: ClipboardReferenceValidator? = nil,
         successPhaseDuration: Duration = .seconds(2),
         postCollapseResetDelay: Duration = .milliseconds(250),
-        delayScheduler: DelayScheduler? = nil
+        delayScheduler: DelayScheduler? = nil,
+        directPasteHandler: (() -> Void)? = nil
     ) {
         self.core = core
+        self.directPasteHandler = directPasteHandler
         self.thumbnailsDirectoryURL = localFileStore?.url(for: .clipboardThumbnails)
         self.referenceValidator = referenceValidator ?? ClipboardReferenceValidator()
         self.successPhaseDuration = successPhaseDuration

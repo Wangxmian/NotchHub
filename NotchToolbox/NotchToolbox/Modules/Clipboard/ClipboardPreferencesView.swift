@@ -214,6 +214,9 @@ struct ClipboardPinEditor: View {
     let item: ClipboardHistoryItem
     @State private var text = ""
     @State private var error: String?
+    @State private var initialized = false
+    @State private var saveTask: Task<Void, Never>?
+    @FocusState private var contentFocused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -224,12 +227,26 @@ struct ClipboardPinEditor: View {
                 Button("删除") { model.delete(item.id) }
             }
             if [.plainText, .richText, .figmaText].contains(item.contentType) {
-                TextField("内容", text: $text).onSubmit { do { try model.core.editText(item.id, text: text) } catch { self.error = error.localizedDescription } }
-                Text(item.contentType == .plainText ? "回车保存内容" : "编辑后回车保存为纯文本，原格式将移除。").font(.caption).foregroundStyle(.secondary)
+                TextField("内容", text: $text).focused($contentFocused).onSubmit(saveText)
+                Text(item.contentType == .plainText ? "内容自动保存" : "编辑后自动保存为纯文本，原格式将移除。").font(.caption).foregroundStyle(.secondary)
             } else { Text("此内容不是可编辑文本").font(.caption).foregroundStyle(.secondary) }
             if let error { Text(error).font(.caption).foregroundStyle(.orange) }
         }.padding(8).background(Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 8))
-        .onAppear { text = (try? model.core.fullText(item)) ?? item.previewText }
+         .onAppear { text = (try? model.core.fullText(item)) ?? item.previewText; initialized = true }
+        .onChange(of: text) { _ in
+            guard initialized else { return }
+            saveTask?.cancel(); saveTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                if !Task.isCancelled { saveText() }
+            }
+        }
+        .onChange(of: item.contentHash) { _ in if !contentFocused { text = (try? model.core.fullText(item)) ?? item.previewText } }
+        .onDisappear { saveTask?.cancel(); if initialized { saveText() } }
+    }
+    private func saveText() {
+        guard [.plainText, .richText, .figmaText].contains(item.contentType),
+              (try? model.core.fullText(item)) != text else { return }
+        do { try model.core.editText(item.id, text: text); error = nil } catch { self.error = error.localizedDescription }
     }
     private func save(_ change: (inout ClipboardHistoryItem) -> Void) { do { try model.core.mutateItem(item.id, change) } catch { self.error = error.localizedDescription } }
 }
