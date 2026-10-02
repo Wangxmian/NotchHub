@@ -7,6 +7,7 @@ struct ClipboardBrowserView: View {
     var floating = false
     @FocusState private var focused: Bool
     @State private var monitor: Any?
+    @State private var presentationID = UUID()
 
     var body: some View {
         VStack(spacing: 8) {
@@ -28,6 +29,7 @@ struct ClipboardBrowserView: View {
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
         .onAppear {
+            model.activePresentationID = presentationID
             model.captureTarget(); model.refresh(); model.isPresented = true; model.isInputFocused = true
             model.closePresentation = close
             model.schedulePreview()
@@ -36,7 +38,7 @@ struct ClipboardBrowserView: View {
         }
         .onDisappear {
             if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
-            model.isPresented = false; model.isInputFocused = false
+            if model.activePresentationID == presentationID { model.activePresentationID = nil; model.isPresented = false; model.isInputFocused = false }
         }
         .onChange(of: focused) { model.isInputFocused = $0 }
     }

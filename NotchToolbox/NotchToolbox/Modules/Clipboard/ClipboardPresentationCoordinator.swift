@@ -33,6 +33,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             MainActor.assumeIsolated {
                 guard let self else { return event }
+                if event.type == .keyDown, self.model.matches(event, shortcut: self.model.preferences.popupShortcut) { self.hotKey(); return nil }
                 if event.type == .flagsChanged, self.model.isPresented {
                     let released = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
                     if released && self.cycle { self.cycle = false; self.model.activateSelection() }

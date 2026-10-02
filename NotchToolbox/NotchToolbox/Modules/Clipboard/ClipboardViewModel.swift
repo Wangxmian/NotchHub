@@ -35,6 +35,7 @@ final class ClipboardViewModel: ObservableObject {
     var targetApplication: NSRunningApplication?
     var closePresentation: (() -> Void)?
     var isPresented = false
+    var activePresentationID: UUID?
     private var searchTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?
     var preferences: ClipboardPreferences { core.preferences }
@@ -131,6 +132,7 @@ final class ClipboardViewModel: ObservableObject {
     }
     func schedulePreview() {
         previewTask?.cancel()
+        guard selectedItem != nil else { previewVisible = false; return }
         guard preferences.openPreviewAutomatically else { return }
         previewTask = Task { @MainActor [weak self] in
             guard let self else { return }

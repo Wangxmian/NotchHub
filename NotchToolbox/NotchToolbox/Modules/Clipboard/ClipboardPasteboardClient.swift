@@ -98,5 +98,11 @@ final class LiveClipboardPasteboardClient: ClipboardPasteboardClient {
         guard items.isEmpty || pasteboard.writeObjects(items) else {
             throw CocoaError(.fileWriteUnknown)
         }
+        // Maccy compatibility: these applications only synchronize after focus changes.
+        if let app = NSWorkspace.shared.frontmostApplication,
+           app.bundleURL?.lastPathComponent == "Chrome Remote Desktop.app" || app.localizedName?.contains("NetBeans") == true {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.hide(self)
+        }
     }
 }

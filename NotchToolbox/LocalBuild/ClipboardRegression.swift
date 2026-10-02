@@ -1,8 +1,9 @@
 import AppKit
 import Foundation
+import CoreText
 
 @main struct ClipboardRegression {
-    @MainActor static func main() throws {
+    @MainActor static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let fileStore = LocalFileStore(baseURL: root)
@@ -55,6 +56,23 @@ import Foundation
         precondition(core.history.filter { $0.id == id }.count == 1)
         capture("first\nline")
         precondition(core.history.filter { $0.id == id }.count == 1 && core.history.first { $0.id == id }!.copyCount == 4)
+        let enabled = core.preferences.enabledPasteboardTypes
+        try core.updatePreferences { $0.enabledPasteboardTypes = [] }
+        capture("all formats disabled")
+        precondition(!core.history.contains { $0.previewText == "all formats disabled" })
+        try core.updatePreferences { $0.enabledPasteboardTypes = enabled }
+        let model = ClipboardViewModel(core: core)
+        model.refresh(); model.selectedID = model.results.last?.id
+        model.moveSelection(1)
+        precondition(model.selectedFooter == 0 && model.selectedID == nil)
+        model.moveSelection(1); precondition(model.selectedFooter == 1)
+        model.moveSelection(-1); model.moveSelection(-1)
+        precondition(model.selectedID == model.results.last?.id && model.selectedFooter == nil)
+        ClipboardIntentRegistry.model = model
+        for invalid in [0, -1, core.history.count + 1] {
+            do { _ = try ClipboardIntentRegistry.item(number: invalid); preconditionFailure("Invalid intent index accepted") }
+            catch ClipboardIntentError.notFound {} catch { throw error }
+        }
         // Rich text retains all original representations and falls back correctly.
         let text = ClipboardInlineRepresentation(data: Data("A\nB".utf8), pasteboardType: "public.utf8-plain-text", suggestedFileExtension: nil)
         let rtf = ClipboardInlineRepresentation(data: Data(#"{\rtf1 hello}"#.utf8), pasteboardType: "public.rtf", suggestedFileExtension: nil)
@@ -113,7 +131,28 @@ import Foundation
         withExtendedLifetime(bridge) {}; ud.removePersistentDomain(forName: suite)
         precondition(NotchHubReleaseUpdater.newer("v1.10.0", than: "1.9.0"))
         precondition(!NotchHubReleaseUpdater.newer("v1.2.0", than: "1.3.0"))
-        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 action combinations, setting bounds and script bridge")
+        // Exercise real Vision OCR on a synthetic image and search the recognized content.
+        let context = CGContext(data: nil, width: 1000, height: 160, bitsPerComponent: 8, bytesPerRow: 4000,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 1000, height: 160))
+        context.textPosition = CGPoint(x: 24, y: 50)
+        let label = NSAttributedString(string: "NOTCHHUB OCR TEST", attributes: [
+            .init(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 64, nil),
+            .init(kCTForegroundColorAttributeName as String): CGColor(gray: 0, alpha: 1)])
+        CTLineDraw(CTLineCreateWithAttributedString(label), context)
+        let png = NSBitmapImageRep(cgImage: context.makeImage()!).representation(using: .png, properties: [:])!
+        let ocrCapture = ClipboardCapture(contentType: .image, previewText: "OCR", contentHash: "ocr-sample", capturedAt: Date(),
+            sourceAppBundleID: nil, sourceAppName: nil, payload: .inline(data: png, pasteboardType: "public.png", suggestedFileExtension: "png"))
+        let ocrItem = try store.save(ocrCapture, maxItems: 200).first!
+        try core.handleAppDidLaunch()
+        for _ in 0..<40 {
+            if core.history.first(where: { $0.id == ocrItem.id })?.ocrText != nil { break }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        let recognized = core.history.first { $0.id == ocrItem.id }!
+        precondition(recognized.ocrText?.contains("NOTCHHUB") == true, "Vision OCR failed to recognize sample")
+        precondition(search.search("OCR TEST", items: [recognized], mode: "exact").count == 1)
+        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 action combinations, setting bounds, script bridge, footer navigation, intent bounds and real Vision OCR")
     }
 }
 @MainActor private final class TestPasteboard: ClipboardPasteboardClient {

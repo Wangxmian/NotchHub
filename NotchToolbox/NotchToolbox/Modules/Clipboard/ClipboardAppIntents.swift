@@ -30,6 +30,10 @@ struct NotchHubClipboardEntity: TransientAppEntity {
 struct GetNotchHubClipboard: AppIntent {
     static var title: LocalizedStringResource = "Get NotchHub Clipboard Item"
     static var description = IntentDescription("Get text, HTML, rich text, an image or a file from NotchHub clipboard history.")
+    static var parameterSummary: some ParameterSummary {
+        When(\.$selected, .equalTo, false) { Summary { \.$number; \.$selected } }
+        otherwise: { Summary { \.$selected } }
+    }
     @Parameter(title: "Selected", default: true) var selected: Bool
     @Parameter(title: "Number", default: 1) var number: Int
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<NotchHubClipboardEntity> {
@@ -42,9 +46,10 @@ struct GetNotchHubClipboard: AppIntent {
         output.text = reps.first { $0.pasteboardType == "public.utf8-plain-text" }.flatMap { String(data: $0.data, encoding: .utf8) }
         output.html = reps.first { $0.pasteboardType == "public.html" }.flatMap { String(data: $0.data, encoding: .utf8) }
         output.richText = reps.first { $0.pasteboardType == "public.rtf" }.flatMap { String(data: $0.data, encoding: .utf8) }
-        if let data = try model.core.imageData(item) {
-            let url = FileManager.default.temporaryDirectory.appending(path: "NotchHub-Clipboard-\(UUID()).image")
-            try data.write(to: url, options: .atomic); output.image = url
+        if let image = reps.first(where: { ["public.png", "public.tiff", "public.jpeg", "public.heic"].contains($0.pasteboardType) }) {
+            let ext = ["public.png": "png", "public.tiff": "tiff", "public.jpeg": "jpg", "public.heic": "heic"][image.pasteboardType] ?? "png"
+            let url = FileManager.default.temporaryDirectory.appending(path: "NotchHub-Clipboard-\(UUID()).\(ext)")
+            try image.data.write(to: url, options: .atomic); output.image = url
         }
         if case let .fileReferences(references) = item.payload { output.file = try ClipboardReferenceValidator().validate(references).first }
         return .result(value: output)

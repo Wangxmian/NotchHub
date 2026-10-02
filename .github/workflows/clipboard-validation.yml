@@ -19,7 +19,7 @@ jobs:
           if ! xcodebuild -project NotchToolbox/NotchToolbox.xcodeproj \
             -scheme NotchToolbox -configuration Release \
             -destination 'generic/platform=macOS' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=13.0 \
+            CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES MACOSX_DEPLOYMENT_TARGET=13.0 \
             build > native-build.log 2>&1; then
             python3 - <<'PYCODE'
           from pathlib import Path
@@ -28,6 +28,22 @@ jobs:
           for line in (errors or lines[-25:])[:40]:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::error::' + escaped)
+          PYCODE
+            exit 1
+          fi
+      - name: Run existing native module tests
+        run: |
+          if ! xcodebuild -project NotchToolbox/NotchToolbox.xcodeproj \
+            -scheme NotchToolbox -configuration Release -destination 'platform=macOS' \
+            -derivedDataPath build -only-testing:NotchToolboxTests \
+            CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES MACOSX_DEPLOYMENT_TARGET=13.0 \
+            test > native-tests.log 2>&1; then
+            python3 - <<'PYCODE'
+          from pathlib import Path
+          lines = Path('native-tests.log').read_text(errors='replace').splitlines()
+          errors = [line for line in lines if 'error:' in line or 'failed' in line.lower()]
+          for line in (errors or lines[-25:])[:40]:
+              print('::error::' + line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
           PYCODE
             exit 1
           fi
@@ -44,5 +60,6 @@ jobs:
           name: native-validation-logs
           path: |
             native-build.log
+            native-tests.log
             clipboard-regression.log
             pomodoro-regression.log
