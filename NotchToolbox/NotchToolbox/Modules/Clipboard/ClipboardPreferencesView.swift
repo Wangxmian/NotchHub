@@ -9,10 +9,17 @@ struct ClipboardPreferencesView: View {
     @State private var validationError: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("剪贴板设置", selection: $category) {
-                Text("通用").tag(0); Text("存储").tag(1); Text("外观").tag(2)
-                Text("固定").tag(3); Text("忽略").tag(4); Text("高级").tag(5)
-            }.pickerStyle(.segmented)
+            HStack(spacing: 12) {
+                Text("剪贴板设置").font(.headline).fixedSize()
+                Picker("剪贴板设置", selection: $category) {
+                    Text("通用").tag(0); Text("存储").tag(1); Text("外观").tag(2)
+                    Text("固定").tag(3); Text("忽略").tag(4); Text("高级").tag(5)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     switch category {
@@ -23,10 +30,16 @@ struct ClipboardPreferencesView: View {
                     case 4: ignore
                     default: advanced
                     }
-                }.padding(.vertical, 8)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.vertical, 8)
             }
+            .id(category)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             if let error = validationError ?? model.lastPasteError { Text(error).font(.caption).foregroundStyle(.orange) }
-        }.padding(20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(20)
         .onAppear { model.refresh() }
     }
     private func binding<T>(_ path: WritableKeyPath<ClipboardPreferences, T>) -> Binding<T> {
