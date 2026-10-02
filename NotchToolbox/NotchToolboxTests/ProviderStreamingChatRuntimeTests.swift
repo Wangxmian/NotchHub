@@ -580,7 +580,7 @@ struct ProviderStreamingChatRuntimeTests {
             try await collectRuntimeEvents(from: runtime.streamReply(for: request))
         }
 
-        await waitUntilStreamingRequestStarts(scenarioID: configured.scenarioID)
+        try await waitUntilStreamingRequestStarts(scenarioID: configured.scenarioID)
         runtime.stopStreaming(requestID: request.id)
         let events = try await waitForTaskValue(task, timeoutNanoseconds: 1_000_000_000)
 
@@ -607,16 +607,15 @@ struct ProviderStreamingChatRuntimeTests {
             try await collectRuntimeEvents(from: runtime.streamReply(for: request))
         }
 
-        await waitUntilStreamingRequestStarts(scenarioID: configured.scenarioID)
+        try await waitUntilStreamingRequestStarts(scenarioID: configured.scenarioID)
         task.cancel()
         do {
             _ = try await waitForTaskValue(task, timeoutNanoseconds: 1_000_000_000)
         } catch is CancellationError {
         }
 
-        let didStop = await waitUntilStreamingRequestStops(
-            scenarioID: configured.scenarioID,
-            maxYields: 1_000
+        let didStop = try await waitUntilStreamingRequestStops(
+            scenarioID: configured.scenarioID
         )
         #expect(didStop)
     }
@@ -746,29 +745,33 @@ private func makeConfiguredTestSession(
     )
 }
 
-private func waitUntilStreamingRequestStarts(scenarioID: String) async {
-    while !(await StreamingURLProtocolRegistry.shared.didStartRequest(for: scenarioID)) {
-        await Task.yield()
+// URLSession cancellation crosses its delegate queue and the registry actor.
+// Yield counts are not elapsed-time bounds and can expire before those queues run.
+private func waitUntilStreamingRequestStarts(scenarioID: String) async throws {
+    let didStart = try await waitForStreamingSignal {
+        await StreamingURLProtocolRegistry.shared.didStartRequest(for: scenarioID)
     }
-    for _ in 0..<5 {
-        await Task.yield()
+    guard didStart else { throw RuntimeTestTimeoutError.timedOut }
+}
+
+private func waitUntilStreamingRequestStops(scenarioID: String) async throws -> Bool {
+    try await waitForStreamingSignal {
+        await StreamingURLProtocolRegistry.shared.didStopRequest(for: scenarioID)
     }
 }
 
-private func waitUntilStreamingRequestStops(
-    scenarioID: String,
-    maxYields: Int
-) async -> Bool {
-    for _ in 0..<maxYields {
-        if await StreamingURLProtocolRegistry.shared.didStopRequest(for: scenarioID) {
-            for _ in 0..<5 {
-                await Task.yield()
-            }
-            return true
-        }
-        await Task.yield()
+private func waitForStreamingSignal(
+    timeout: Duration = .seconds(5),
+    _ signal: () async -> Bool
+) async throws -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while true {
+        try Task.checkCancellation()
+        if await signal() { return true }
+        if clock.now >= deadline { return false }
+        try await Task.sleep(for: .milliseconds(10))
     }
-    return false
 }
 
 private func waitForTaskValue<T>(
@@ -935,8 +938,12 @@ private final class StreamingURLProtocol: URLProtocol {
                     headerFields: ["Content-Type": "text/event-stream"]
                 )!
                 client.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                while !Task.isCancelled {
-                    await Task.yield()
+                // Keep the transport open without a busy loop starving other tests.
+                do {
+                    try await Task.sleep(for: .seconds(60))
+                } catch is CancellationError {
+                } catch {
+                    client.urlProtocol(self, didFailWithError: error)
                 }
             }
         }
