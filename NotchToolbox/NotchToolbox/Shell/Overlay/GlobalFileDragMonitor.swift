@@ -1,0 +1,141 @@
+import AppKit
+
+/// Watches a system-wide file drag so the notch can open its drop target as the
+/// cursor nears the top of the screen — before the drag reaches the (tiny) idle
+/// window. A file drag originates in another app (Finder, desktop, a document),
+/// so its events go to that app; only a global monitor sees them.
+///
+/// Detection: on each left-mouse-dragged event we inspect the drag pasteboard
+/// (`NSPasteboard(name: .drag)`); while it carries file URLs we report the live
+/// cursor location via `onFileDragChanged`. `onFileDragEnded` fires on mouse-up
+/// with the release location.
+@MainActor
+final class GlobalFileDragMonitor {
+    /// Live cursor location (screen coordinates) while a file drag is active.
+    var onFileDragChanged: ((CGPoint) -> Void)?
+    /// Release location on mouse-up, if a file drag was active.
+    var onFileDragEnded: ((CGPoint) -> Void)?
+
+    private var draggedMonitor: Any?
+    private var upMonitor: Any?
+    private var localDraggedMonitor: Any?
+    private var localUpMonitor: Any?
+    private var isActive = false
+
+    func start() {
+        guard draggedMonitor == nil, upMonitor == nil,
+              localDraggedMonitor == nil, localUpMonitor == nil else {
+            return
+        }
+
+        draggedMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDragged]
+        ) { [weak self] _ in
+            self?.handleDragged()
+        }
+        upMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseUp]
+        ) { [weak self] _ in
+            self?.handleUp()
+        }
+        // Global monitors intentionally do not receive events while this app is
+        // active. Once the notch panel becomes the drag destination, the final
+        // mouse-up can therefore be local; observe both paths so the temporary
+        // drop prompt cannot remain latched after a cancelled/missed drop.
+        localDraggedMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDragged]
+        ) { [weak self] event in
+            self?.handleDragged()
+            return event
+        }
+        localUpMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseUp]
+        ) { [weak self] event in
+            self?.handleUp()
+            return event
+        }
+    }
+
+    func stop() {
+        if let draggedMonitor {
+            NSEvent.removeMonitor(draggedMonitor)
+        }
+        if let upMonitor {
+            NSEvent.removeMonitor(upMonitor)
+        }
+        if let localDraggedMonitor {
+            NSEvent.removeMonitor(localDraggedMonitor)
+        }
+        if let localUpMonitor {
+            NSEvent.removeMonitor(localUpMonitor)
+        }
+        draggedMonitor = nil
+        upMonitor = nil
+        localDraggedMonitor = nil
+        localUpMonitor = nil
+        isActive = false
+    }
+
+    private func handleDragged() {
+        guard Self.dragPasteboardHasFileURLs() else {
+            return
+        }
+
+        isActive = true
+        onFileDragChanged?(NSEvent.mouseLocation)
+    }
+
+    private func handleUp() {
+        guard isActive else {
+            return
+        }
+
+        isActive = false
+        onFileDragEnded?(NSEvent.mouseLocation)
+    }
+
+    private static func dragPasteboardHasFileURLs() -> Bool {
+        hasFileURLs(in: NSPasteboard(name: .drag))
+    }
+
+    /// Browser tabs can carry a promised local file alongside their page URL.
+    /// Only treat a drag as a file drop when its pasteboard has an actual local
+    /// URL and no web URL payload.
+    static func hasFileURLs(in pasteboard: NSPasteboard) -> Bool {
+        guard pasteboardWebURL(in: pasteboard) == nil else {
+            return false
+        }
+
+        let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+
+        return urls.contains(where: \.isFileURL)
+    }
+
+    private static func pasteboardWebURL(in pasteboard: NSPasteboard) -> URL? {
+        guard let rawURL = pasteboard.string(
+            forType: NSPasteboard.PasteboardType("public.url")
+        ), let url = URL(string: rawURL), url.isFileURL == false else {
+            return nil
+        }
+
+        return url
+    }
+
+    deinit {
+        if let draggedMonitor {
+            NSEvent.removeMonitor(draggedMonitor)
+        }
+        if let upMonitor {
+            NSEvent.removeMonitor(upMonitor)
+        }
+        if let localDraggedMonitor {
+            NSEvent.removeMonitor(localDraggedMonitor)
+        }
+        if let localUpMonitor {
+            NSEvent.removeMonitor(localUpMonitor)
+        }
+    }
+}

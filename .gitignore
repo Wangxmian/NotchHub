@@ -1,0 +1,46 @@
+.DS_Store
+**/.DS_Store
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Build output
+DerivedData/
+build/
+*.ipa
+*.dSYM
+
+# Swift Package Manager
+.build/
+
+# Local environment
+.env
+.env.*
+
+# Editor swap files
+*.swp
+*.swo
+
+# Local worktrees
+.worktrees/
+
+# Superpowers local runtime artifacts
+.superpowers/
+
+# LLVM coverage artifacts
+*.profraw
+
+# 本地工作文档（不入库）
+Agent.md
+Design.md
+MD方案文件/
+docs/
+官网方案/
+
+# Local artifacts
+outputs/
+*.dmg
+*.zip
+LocalBuild/test-output/
