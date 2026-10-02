@@ -113,7 +113,7 @@ struct ClipboardBrowserView: View {
                     CachedThumbnailImage(url: url) { Image(systemName: "photo") }
                         .frame(maxWidth: 100, maxHeight: CGFloat(model.preferences.imageMaxHeight))
                 } else {
-                    if model.preferences.showHexColorSwatch, let color = hexColor(item.title) {
+                    if model.preferences.showHexColorSwatch, let color = hexColor(result.text) {
                         RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 16, height: 16)
                     }
                     Text(highlighted(result)).font(.system(size: 12)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
@@ -163,12 +163,7 @@ struct ClipboardBrowserView: View {
         return value
     }
     private func hexColor(_ text: String) -> Color? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("#"), [4, 7].contains(trimmed.count) else { return nil }
-        var hex = String(trimmed.dropFirst())
-        if hex.count == 3 { hex = hex.map { String(repeating: String($0), count: 2) }.joined() }
-        guard let value = UInt32(hex, radix: 16) else { return nil }
-        return Color(red: Double((value >> 16) & 255)/255, green: Double((value >> 8) & 255)/255, blue: Double(value & 255)/255)
+        ClipboardHexColor.parse(text).map { Color(red: $0.red, green: $0.green, blue: $0.blue, opacity: $0.alpha) }
     }
     private var footer: some View {
         HStack(spacing: 12) {

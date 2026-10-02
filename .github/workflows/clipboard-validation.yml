@@ -33,11 +33,24 @@ jobs:
           fi
       - name: Run existing native module tests
         run: |
-          if ! xcodebuild -project NotchToolbox/NotchToolbox.xcodeproj \
-            -scheme NotchToolbox -configuration Release -destination 'platform=macOS' \
-            -derivedDataPath build -only-testing:NotchToolboxTests \
-            CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES MACOSX_DEPLOYMENT_TARGET=13.0 \
-            test > native-tests.log 2>&1; then
+          status=0
+          common=(-project NotchToolbox/NotchToolbox.xcodeproj -scheme NotchToolbox
+            -configuration Release -destination 'platform=macOS' -derivedDataPath build
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES
+            MACOSX_DEPLOYMENT_TARGET=13.0)
+          # Isolate suites that exercise real run-loop timers, process deadlines and AppKit.
+          # All suites still run; serialization prevents unrelated tests starving their deadlines.
+          if ! xcodebuild "${common[@]}" -only-testing:NotchToolboxTests \
+            -skip-testing:NotchToolboxTests/ClipboardModuleTests \
+            -skip-testing:NotchToolboxTests/MusicModuleTests \
+            -skip-testing:NotchToolboxTests/PomodoroModuleTests \
+            -skip-testing:NotchToolboxTests/RestVariantStoreTests \
+            test > native-tests.log 2>&1; then status=1; fi
+          for suite in ClipboardModuleTests MusicModuleTests PomodoroModuleTests RestVariantStoreTests; do
+            if ! xcodebuild "${common[@]}" -only-testing:"NotchToolboxTests/$suite" \
+              test >> native-tests.log 2>&1; then status=1; fi
+          done
+          if [ "$status" -ne 0 ]; then
             python3 - <<'PYCODE'
           from pathlib import Path
           lines = Path('native-tests.log').read_text(errors='replace').splitlines()

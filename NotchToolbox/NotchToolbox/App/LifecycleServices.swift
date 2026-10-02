@@ -150,6 +150,7 @@ enum KeyboardShortcutCarbonMapper {
             throw GlobalShortcutError.unsupportedKey(keyEquivalent)
         }
 
+        if let code = specialKeyCodes[character] { return code }
         if command && commandSwitchesToQWERTY, let code = keyCodes[character] { return code }
         if let code = currentLayoutKeyCode(String(character)) { return code }
         guard let code = keyCodes[character] else {
@@ -160,6 +161,7 @@ enum KeyboardShortcutCarbonMapper {
     }
 
     static func keyEquivalent(for code: UInt16, command: Bool = false) -> String? {
+        if let value = specialKeyCodes.first(where: { $0.value == UInt32(code) }) { return String(value.key) }
         if command && commandSwitchesToQWERTY { return keyCodes.first { $0.value == UInt32(code) }.map { String($0.key) } }
         guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
               let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
@@ -208,6 +210,17 @@ enum KeyboardShortcutCarbonMapper {
         (try? keyCode(for: shortcut.keyEquivalent)) != nil
     }
 
+    static func displayKey(_ key: String) -> String {
+        switch key { case " ": return "Space"; case "\u{7f}": return "Delete"; case "\r": return "Return"; case "\t": return "Tab"; case "\u{1b}": return "Esc"; default: break }
+        if let value = key.unicodeScalars.first?.value, (0xF704...0xF717).contains(value) { return "F\(value - 0xF704 + 1)" }
+        return key.uppercased()
+    }
+    private static let specialKeyCodes: [Character: UInt32] = {
+        var values: [Character: UInt32] = [" ": 49, "\u{7f}": 51, "\r": 36, "\t": 48, "\u{1b}": 53]
+        let codes: [UInt32] = [122,120,99,118,96,97,98,100,101,109,103,111,105,107,113,106,64,79,80,90]
+        for (index, code) in codes.enumerated() { values[Character(UnicodeScalar(0xF704 + index)!)] = code }
+        return values
+    }()
     private static let keyCodes: [Character: UInt32] = [
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
         "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,

@@ -4,6 +4,7 @@ import Testing
 @testable import NotchToolbox
 
 @MainActor
+@Suite(.serialized)
 struct PomodoroModuleTests {
 
     @Test func coreStartsInFocusIdleWithDefaultDurations() throws {

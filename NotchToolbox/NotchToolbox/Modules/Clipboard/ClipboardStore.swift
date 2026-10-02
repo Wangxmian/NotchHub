@@ -31,7 +31,7 @@ final class ClipboardStore {
             guard !capture.representations.isEmpty else {
                 return item.contentHash == capture.contentHash && item.contentType == capture.contentType
             }
-            let existing = try representationGroups(for: item)
+            guard let existing = try? representationGroups(for: item) else { return false }
             guard existing.count == capture.representations.count else { return false }
             let transient: Set<String> = ["io.github.Wangxmian.NotchHub.clipboard", "org.nspasteboard.source", "org.nspasteboard.ModifiedType", "x.nspasteboard.ModifiedType", "org.p0deje.Maccy", "com.apple.linkpresentation.metadata", "com.apple.WebKit.custom-pasteboard-data", "org.chromium.web-custom-data", "org.chromium.source-url", "org.chromium.internal.source-rfh-token", "com.apple.notes.richtext"]
             return zip(existing, capture.representations).allSatisfy { old, new in

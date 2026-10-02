@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import NotchToolbox
 
+@Suite(.serialized)
 struct MusicModuleTests {
 
     @Test func v1LaunchTargetsMatchApprovedSupportBoundary() {

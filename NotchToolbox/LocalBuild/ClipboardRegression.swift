@@ -157,6 +157,16 @@ import CoreText
                 }
             }
         }
+        try core.updatePreferences { $0.pasteByDefault = true; $0.removeFormattingByDefault = false }
+        let beforeNumberPaste = pasteRequests
+        let numberCode = try KeyboardShortcutCarbonMapper.keyCode(for: "1", command: true)
+        let numberEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: 0, context: nil,
+            characters: "!", charactersIgnoringModifiers: "!", isARepeat: false, keyCode: UInt16(numberCode))!
+        _ = dispatchModel.handleKey(numberEvent)
+        precondition(pasteRequests == beforeNumberPaste + 1 && !client.written[0].types.contains(.rtf))
+        let deleteCode = try KeyboardShortcutCarbonMapper.keyCode(for: "\u{7f}")
+        let spaceCode = try KeyboardShortcutCarbonMapper.keyCode(for: " ")
+        precondition(deleteCode == 51 && spaceCode == 49)
         dispatchModel.isPresented = false
         try core.updatePreferences { $0.clipboardCheckInterval = -1; $0.imageMaxHeight = 999; $0.previewDelay = 0 }
         precondition(core.preferences.clipboardCheckInterval == 0.05 && core.preferences.imageMaxHeight == 200 && core.preferences.previewDelay == 200)
@@ -195,6 +205,10 @@ import CoreText
         configured.popupShortcut = nil; configured.pinShortcut = nil; configured.deleteShortcut = nil; configured.previewShortcut = nil; configured.openInNotch = true
         let reopened = try JSONDecoder().decode(ClipboardPreferences.self, from: JSONEncoder().encode(configured))
         precondition(reopened == configured)
+        precondition(ClipboardHexColor.parse("#0f08")?.alpha == Double(8)/15)
+        precondition(ClipboardHexColor.parse("ff000080")?.red == 1)
+        precondition(ClipboardHexColor.parse("bad") != nil)
+        precondition(ClipboardHexColor.parse(" #fff") == nil && ClipboardHexColor.parse("#xyz") == nil)
         // Geometry covers right-edge reversal, a negative-origin display and oversized preferences.
         let screen = CGRect(x: -1200, y: 0, width: 1200, height: 800)
         let left = ClipboardPopupLayout.fit(list: CGRect(x: -450, y: 0, width: 450, height: 800), screen: screen, previewWidth: 400)

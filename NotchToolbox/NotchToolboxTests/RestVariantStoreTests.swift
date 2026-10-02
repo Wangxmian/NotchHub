@@ -3,6 +3,7 @@ import Testing
 @testable import NotchToolbox
 
 @MainActor
+@Suite(.serialized)
 struct RestVariantStoreTests {
 
     @Test func defaultsToTransparentPresentation() {

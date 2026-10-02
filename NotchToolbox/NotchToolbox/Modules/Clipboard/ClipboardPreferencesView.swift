@@ -268,9 +268,10 @@ struct ClipboardShortcutRecorder: View {
                         MainActor.assumeIsolated {
                             if event.keyCode == 53 { stop(); return nil }
                             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                            guard let key = event.charactersIgnoringModifiers?.lowercased(), !key.isEmpty else { return nil }
+                            guard let key = KeyboardShortcutCarbonMapper.keyEquivalent(for: event.keyCode, command: flags.contains(.command)) ?? event.charactersIgnoringModifiers?.lowercased(), !key.isEmpty else { return nil }
                             let shortcut = KeyboardShortcutDescriptor(keyEquivalent: key, modifiers: ShortcutModifier.allCases.filter { flags.contains($0.eventFlags) })
-                            if global && (shortcut.modifiers.isEmpty || !KeyboardShortcutCarbonMapper.canMap(shortcut) || (value != shortcut && !KeyboardShortcutConflictValidator.isAvailable(shortcut))) { error = "快捷键不可用或与系统冲突"; return nil }
+                            let functionKey = key.unicodeScalars.first.map { (0xF704...0xF717).contains($0.value) } ?? false
+                            if global && (shortcut.modifiers.isEmpty && !functionKey || !KeyboardShortcutCarbonMapper.canMap(shortcut) || (value != shortcut && !KeyboardShortcutConflictValidator.isAvailable(shortcut))) { error = "快捷键不可用或与系统冲突"; return nil }
                             value = shortcut; error = nil; stop(); return nil
                         }
                     }
@@ -283,7 +284,7 @@ struct ClipboardShortcutRecorder: View {
     private var label: String {
         guard let value else { return "未设置" }
         let glyph = value.modifiers.map { modifier in switch modifier { case .command: return "⌘"; case .option: return "⌥"; case .control: return "⌃"; case .shift: return "⇧" } }.joined()
-        let key = value.keyEquivalent == " " ? "Space" : value.keyEquivalent == "\u{7f}" ? "Delete" : value.keyEquivalent.uppercased()
+        let key = KeyboardShortcutCarbonMapper.displayKey(value.keyEquivalent)
         return glyph + key
     }
     private func stop() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; recording = false }
