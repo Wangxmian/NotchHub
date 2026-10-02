@@ -160,6 +160,9 @@ final class AppCompositionRoot: ObservableObject {
             resolvedAIChatModel.bindActivityHint { [weak self] hint in
                 self?.updateAIChatActivityHint(hint)
             }
+            clipboardViewModel.$isInputFocused.sink { [weak self] _ in
+                DispatchQueue.main.async { self?.updatePointerExitCollapseSuppression() }
+            }.store(in: &cancellables)
             pomodoroViewModel.$isTaskInputFocused
                 .sink { [weak self] focused in
                     self?.updatePointerExitCollapseSuppression(isPomodoroInputFocused: focused)
@@ -424,6 +427,7 @@ final class AppCompositionRoot: ObservableObject {
         let taskInputFocused = isPomodoroInputFocused ?? pomodoroViewModel.isTaskInputFocused
         let nextValue = (activeModule == .aiChat && (isFocused || isPresented))
             || (activeModule == .pomodoro && taskInputFocused)
+            || (activeModule == .clipboard && clipboardViewModel.isPresented)
         guard suppressesPointerExitCollapse != nextValue else {
             return
         }

@@ -7,6 +7,7 @@ struct SettingsWindow: View {
     @ObservedObject var updateController: AppUpdateController
     let onClose: () -> Void
     let analyticsReporter: AnalyticsReporter?
+    var clipboardViewModel: ClipboardViewModel? = nil
 
     @State private var selectedTab: SettingsTab = .general
     @State private var isTrafficHovered = false
@@ -26,7 +27,7 @@ struct SettingsWindow: View {
                 sidebar
                     .frame(width: 200)
                 content
-                    .frame(width: 400)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: SettingsWindowMetrics.cornerRadius, style: .continuous))
 
@@ -85,11 +86,14 @@ struct SettingsWindow: View {
                 }
             }
         }
-        .frame(width: SettingsWindowMetrics.windowSize.width, height: SettingsWindowMetrics.windowSize.height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .shadow(color: .black.opacity(0.40), radius: 20, y: 8)
-        .frame(width: SettingsWindowMetrics.outerSize.width, height: SettingsWindowMetrics.outerSize.height)
+        .padding(SettingsWindowMetrics.shadowMargin)
+        .frame(minWidth: SettingsWindowMetrics.outerSize.width, minHeight: SettingsWindowMetrics.outerSize.height)
         .preferredColorScheme(.dark)
         .animation(.easeOut(duration: 0.12), value: viewModel.providerDraft)
+        .onReceive(NotificationCenter.default.publisher(for: .init("NotchHub.focusClipboardSettings"))) { _ in selectedTab = .clipboard }
+        .onReceive(NotificationCenter.default.publisher(for: .init("NotchHub.about"))) { _ in selectedTab = .about }
         .onAppear {
             analyticsReporter?.track(.settingsPaneViewed(pane: selectedTab.analyticsName))
         }
@@ -131,7 +135,9 @@ struct SettingsWindow: View {
 
             switch selectedTab {
             case .general:
-                SettingsGeneralPane(viewModel: viewModel)
+                SettingsGeneralPane(viewModel: viewModel, updateController: updateController)
+            case .clipboard:
+                if let clipboardViewModel { ClipboardPreferencesView(model: clipboardViewModel) }
             case .features:
                 SettingsFeaturesPane(viewModel: viewModel)
             case .about:
@@ -156,6 +162,7 @@ struct SettingsWindow: View {
 
 private struct SettingsGeneralPane: View {
     @ObservedObject var viewModel: SettingsViewModel
+    @ObservedObject var updateController: AppUpdateController
 
     var body: some View {
         VStack(spacing: 0) {
@@ -165,6 +172,8 @@ private struct SettingsGeneralPane: View {
                 action: { viewModel.setLaunchAtLogin(!viewModel.settings.launchAtLogin) }
             )
 
+            SettingsCheckboxRow(title: "自动检查 NotchHub 更新", isOn: updateController.automaticallyChecksForUpdates, action: { updateController.automaticallyChecksForUpdates.toggle() })
+            Button(updateController.buttonTitle) { updateController.performPrimaryAction() }.disabled(updateController.isInteractionLocked).padding(.vertical, 6)
             SettingsGlobalShortcutRow(viewModel: viewModel)
 
             SettingsDivider()
@@ -247,28 +256,6 @@ private struct SettingsFeaturesPane: View {
                     SettingsDivider()
 
                     #endif
-                    SettingsSectionHeader("剪贴板")
-                    SettingsMenuRow(
-                        title: "最大保存数",
-                        value: "\(viewModel.settings.clipboardMaxItems)",
-                        items: viewModel.supportedClipboardMaxItems.map { maxItems in
-                            SettingsMenuItem(title: "\(maxItems)") {
-                                viewModel.setClipboardMaxItems(maxItems)
-                            }
-                        }
-                    )
-                    SettingsMenuRow(
-                        title: "自动清理剪贴板内容",
-                        value: viewModel.settings.clipboardAutoCleanupPolicy.displayTitle,
-                        items: viewModel.supportedCleanupPolicies.map { policy in
-                            SettingsMenuItem(title: policy.displayTitle) {
-                                viewModel.setClipboardCleanupPolicy(policy)
-                            }
-                        }
-                    )
-
-                    SettingsDivider()
-
                     SettingsSectionHeader("AI Chat")
                     SettingsMenuRow(
                         title: "对话历史保留时长",
@@ -1532,6 +1519,7 @@ private enum SettingsWindowTheme {
 
 private enum SettingsTab: CaseIterable, Identifiable {
     case general
+    case clipboard
     case features
     case about
 
@@ -1541,6 +1529,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
         switch self {
         case .general:
             return "通用"
+        case .clipboard:
+            return "剪贴板"
         case .features:
             return "功能选项"
         case .about:
@@ -1552,6 +1542,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
         switch self {
         case .general:
             return "SettingsTabSettingIcon"
+        case .clipboard:
+            return "SettingsTabFunctionIcon"
         case .features:
             return "SettingsTabFunctionIcon"
         case .about:
@@ -1562,6 +1554,7 @@ private enum SettingsTab: CaseIterable, Identifiable {
     var analyticsName: String {
         switch self {
         case .general: return "general"
+        case .clipboard: return "clipboard"
         case .features: return "features"
         case .about: return "about"
         }

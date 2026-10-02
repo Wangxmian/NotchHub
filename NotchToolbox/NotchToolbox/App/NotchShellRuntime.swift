@@ -18,6 +18,10 @@ final class NotchShellRuntime: NSObject {
     private let aiChatHistoryPruneDelay: Duration
     private let settingsPresenter: (any SettingsPresenting)?
     private var isStarted = false
+    private let clipboardSystemIntegration: Bool
+    private var clipboardPresentation: ClipboardPresentationCoordinator?
+    private var clipboardSettingsObserver: NSObjectProtocol?
+    private var clipboardAutomation: ClipboardAutomationBridge?
     private var aiChatHistoryPruneTask: Task<Void, Never>?
     private var settingsCancellables: Set<AnyCancellable> = []
     private var lastAppliedLaunchAtLogin: Bool?
@@ -34,6 +38,7 @@ final class NotchShellRuntime: NSObject {
         updateController: AppUpdateController = AppUpdateController(),
         topologyProvider: DisplayTopologyProviding,
         panelPresenter: OverlayPanelPresenting,
+        clipboardSystemIntegration: Bool = true,
         primaryScreenID: String? = nil,
         simulateNotchOnNonNotchScreen: Bool,
         globalShortcutService: (any GlobalShortcutServicing)? = nil,
@@ -43,6 +48,7 @@ final class NotchShellRuntime: NSObject {
         aiChatHistoryPruneDelay: Duration = .seconds(10)
     ) {
         self.compositionRoot = compositionRoot
+        self.clipboardSystemIntegration = clipboardSystemIntegration
         self.interactions = interactions
         self.updateController = updateController
         self.globalShortcutService = globalShortcutService ?? CarbonGlobalShortcutService()
@@ -191,12 +197,40 @@ final class NotchShellRuntime: NSObject {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        if clipboardSystemIntegration {
+            let clipboardPresentation = ClipboardPresentationCoordinator(model: compositionRoot.clipboardViewModel)
+            clipboardPresentation.openNotch = { [weak self] in
+                self?.coordinator.expand(moduleID: .clipboard)
+            }
+            clipboardPresentation.closeNotch = { [weak self] in
+                guard let self, self.compositionRoot.activeModule == .clipboard else { return }
+                self.coordinator.collapse(reason: .userDismiss)
+            }
+            clipboardPresentation.start()
+            self.clipboardPresentation = clipboardPresentation
+            let defaults: UserDefaults
+            if let directory = ProcessInfo.processInfo.environment["NOTCHHUB_TEST_DATA_DIR"] {
+                let suffix = Data(directory.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_")
+                defaults = UserDefaults(suiteName: "NotchHub.QA." + suffix) ?? .standard
+            } else { defaults = .standard }
+            clipboardAutomation = ClipboardAutomationBridge(core: compositionRoot.clipboardCore, defaults: defaults)
+            ClipboardIntentRegistry.model = compositionRoot.clipboardViewModel
+            clipboardSettingsObserver = NotificationCenter.default.addObserver(forName: .notchHubClipboardSettings, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.clipboardPresentation?.closeFloating()
+                    self?.showSettings()
+                    DispatchQueue.main.async { NotificationCenter.default.post(name: .init("NotchHub.focusClipboardSettings"), object: nil) }
+                }
+            }
+        }
         coordinator.start()
         onboardingCoordinator.activateScreen = { [weak self] screenID in
             self?.coordinator.refreshScreens(primaryScreenID: screenID)
         }
         onboardingCoordinator.start()
     }
+
+    func handleTermination() { compositionRoot.clipboardCore.handleTermination() }
 
     func showSettings() {
         settingsPresenter?.show(centeredOn: NSScreen.main?.visibleFrame)
@@ -205,6 +239,7 @@ final class NotchShellRuntime: NSObject {
     deinit {
         aiChatHistoryPruneTask?.cancel()
         NotificationCenter.default.removeObserver(self)
+        if let clipboardSettingsObserver { NotificationCenter.default.removeObserver(clipboardSettingsObserver) }
     }
 
     private func scheduleAIChatHistoryPrune() {

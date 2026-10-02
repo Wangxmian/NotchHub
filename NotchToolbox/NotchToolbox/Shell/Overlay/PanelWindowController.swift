@@ -80,6 +80,10 @@ final class PanelWindowController: OverlayPanelPresenting {
 
     func present(state: OverlayState, geometry: TopAnchorGeometry) {
         let incomingState = state
+        if case .expanded(_, .clipboard) = state {
+            compositionRoot.clipboardViewModel.captureTarget()
+            DispatchQueue.main.async { [weak self] in self?.panel.makeKey() }
+        }
         let previousState = panelModel.state
         updateExpandedCollapseTargetIfNeeded(
             from: previousState,

@@ -4,6 +4,7 @@ import Testing
 @testable import NotchToolbox
 
 @MainActor
+@Suite(.serialized)
 struct PomodoroModuleTests {
 
     @Test func coreStartsInFocusIdleWithDefaultDurations() throws {
@@ -273,7 +274,10 @@ struct PomodoroModuleTests {
         viewModel.refresh()
 
         harness.now = harness.now.addingTimeInterval(65)
-        try await Task.sleep(for: .milliseconds(1_100))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while viewModel.presentation.timeText != "23:55", ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
 
         #expect(viewModel.presentation.timeText == "23:55")
         #expect(viewModel.presentation.footerText == "今日已累计专注 1 分钟")

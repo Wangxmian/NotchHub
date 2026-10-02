@@ -1,0 +1,97 @@
+name: Clipboard parity validation
+on:
+  push:
+    branches: [clipboard-maccy-parity]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      NOTCHHUB_BACKUP_DIR: ${{ github.workspace }}/verified-backups
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select Swift 6.2 Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Build native application and extract App Intents metadata
+        run: |
+          if ! xcodebuild -project NotchToolbox/NotchToolbox.xcodeproj \
+            -scheme NotchToolbox -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES MACOSX_DEPLOYMENT_TARGET=13.0 \
+            build > native-build.log 2>&1; then
+            python3 - <<'PYCODE'
+          from pathlib import Path
+          lines = Path('native-build.log').read_text(errors='replace').splitlines()
+          errors = [line for line in lines if 'error:' in line]
+          for line in (errors or lines[-25:])[:40]:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error::' + escaped)
+          PYCODE
+            exit 1
+          fi
+      - name: Run existing native module tests
+        run: |
+          status=0
+          common=(-project NotchToolbox/NotchToolbox.xcodeproj -scheme NotchToolbox
+            -configuration Release -destination 'platform=macOS' -derivedDataPath build
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO ENABLE_TESTABILITY=YES
+            MACOSX_DEPLOYMENT_TARGET=13.0)
+          # Isolate suites that exercise real run-loop timers, process deadlines and AppKit.
+          # All suites still run; serialization prevents unrelated tests starving their deadlines.
+          if ! xcodebuild "${common[@]}" -only-testing:NotchToolboxTests \
+            -skip-testing:NotchToolboxTests/ClipboardModuleTests \
+            -skip-testing:NotchToolboxTests/MusicModuleTests \
+            -skip-testing:NotchToolboxTests/PomodoroModuleTests \
+            -skip-testing:NotchToolboxTests/RestVariantStoreTests \
+            test > native-tests.log 2>&1; then status=1; fi
+          for suite in ClipboardModuleTests MusicModuleTests PomodoroModuleTests RestVariantStoreTests; do
+            if ! xcodebuild "${common[@]}" -only-testing:"NotchToolboxTests/$suite" \
+              test >> native-tests.log 2>&1; then status=1; fi
+          done
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PYCODE'
+          from pathlib import Path
+          lines = Path('native-tests.log').read_text(errors='replace').splitlines()
+          errors = [line for line in lines if 'error:' in line or "' failed on " in line or 'recorded an issue' in line or 'Expectation failed' in line]
+          for line in (errors or lines[-25:])[:40]:
+              print('::error::' + line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+          PYCODE
+            exit 1
+          fi
+      - name: Back up passed native module tests
+        if: success()
+        run: python3 scripts/backup_verified.py --label native-module-tests-passed
+      - name: Run clipboard behavior regression
+        if: success() || failure()
+        run: python3 NotchToolbox/LocalBuild/verify.py ClipboardRegression.swift > clipboard-regression.log 2>&1
+      - name: Run Pomodoro regression
+        if: success() || failure()
+        run: python3 NotchToolbox/LocalBuild/verify.py > pomodoro-regression.log 2>&1
+      - name: Verify App Intents metadata is present
+        if: success() || failure()
+        run: test -d build/Build/Products/Release/NotchHub.app/Contents/Resources/Metadata.appintents
+      - name: Back up verified source
+        if: success()
+        run: python3 scripts/backup_verified.py --label full-xcode-validation-passed --destination verified-backups
+      - name: Upload verified source backup
+        if: always() && hashFiles('verified-backups/**/verification.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-source-${{ github.sha }}
+          path: verified-backups/
+          retention-days: 90
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-validation-logs
+          path: |
+            native-build.log
+            native-tests.log
+            clipboard-regression.log
+            pomodoro-regression.log
