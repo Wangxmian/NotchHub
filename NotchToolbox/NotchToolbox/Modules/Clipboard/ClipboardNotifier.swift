@@ -13,7 +13,11 @@ import UserNotifications
                 let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
                 center.add(request) { error in
                     if error == nil && settings.soundSetting == .enabled {
-                        Task { @MainActor in NSSound(named: NSSound.Name(sound == "knock" ? "Pop" : "Tink"))?.play() }
+                        Task { @MainActor in
+                            if let url = Bundle.main.url(forResource: sound == "knock" ? "Knock" : "Write", withExtension: "caf") {
+                                NSSound(contentsOf: url, byReference: true)?.play()
+                            }
+                        }
                     }
                 }
             }

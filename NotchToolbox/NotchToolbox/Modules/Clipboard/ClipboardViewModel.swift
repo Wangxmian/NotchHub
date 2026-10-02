@@ -31,6 +31,8 @@ final class ClipboardViewModel: ObservableObject {
     @Published private(set) var results: [ClipboardSearchService.Result] = []
     @Published var isInputFocused = false
     @Published var previewVisible = false
+    @Published var previewOnLeft = false
+    @Published var presentedPreviewWidth: CGFloat = 400
     @Published var filter = "all" { didSet { scheduleSearch() } }
     var targetApplication: NSRunningApplication?
     var closePresentation: (() -> Void)?

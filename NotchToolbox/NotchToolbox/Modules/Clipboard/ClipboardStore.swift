@@ -27,13 +27,13 @@ final class ClipboardStore {
         var createdPayloadFileNames: [String] = []
         var createdThumbnailFileNames: [String] = []
 
-        if let duplicateIndex = try history.firstIndex(where: { item in
+        if capture.replacingItemID == nil, let duplicateIndex = try history.firstIndex(where: { item in
             guard !capture.representations.isEmpty else {
                 return item.contentHash == capture.contentHash && item.contentType == capture.contentType
             }
             let existing = try representationGroups(for: item)
             guard existing.count == capture.representations.count else { return false }
-            let transient: Set<String> = ["io.github.Wangxmian.NotchHub.clipboard", "org.nspasteboard.source", "org.nspasteboard.ModifiedType", "com.apple.webpasteboard.metadata", "org.chromium.source-url", "org.chromium.source-token"]
+            let transient: Set<String> = ["io.github.Wangxmian.NotchHub.clipboard", "org.nspasteboard.source", "org.nspasteboard.ModifiedType", "x.nspasteboard.ModifiedType", "org.p0deje.Maccy", "com.apple.linkpresentation.metadata", "com.apple.WebKit.custom-pasteboard-data", "org.chromium.web-custom-data", "org.chromium.source-url", "org.chromium.internal.source-rfh-token", "com.apple.notes.richtext"]
             return zip(existing, capture.representations).allSatisfy { old, new in
                 let incoming = new.filter { !transient.contains($0.pasteboardType) }
                 return !incoming.isEmpty && incoming.allSatisfy { rep in old.contains { $0.pasteboardType == rep.pasteboardType && $0.data == rep.data } }
@@ -59,7 +59,7 @@ final class ClipboardStore {
             let thumbnailResult = try makeThumbnailDescriptor(for: capture.thumbnail)
             createdThumbnailFileNames = thumbnailResult.createdFileNames
 
-            let item = ClipboardHistoryItem(
+            var item = ClipboardHistoryItem(
                 id: UUID(),
                 contentType: capture.contentType,
                 previewText: capture.previewText,
@@ -72,6 +72,11 @@ final class ClipboardStore {
                 firstCopiedAt: capture.capturedAt
             )
 
+            if let replaced = history.first(where: { $0.id == capture.replacingItemID }) {
+                item.id = replaced.id; item.firstCopiedAt = replaced.firstCopiedAt ?? replaced.copiedAt
+                item.copyCount = replaced.copyCount + 1; item.pinKey = replaced.pinKey; item.alias = replaced.alias
+                history.removeAll { $0.id == replaced.id }; removedItems.append(replaced)
+            }
             history.insert(item, at: 0)
 
             var ordinaryCount = 0

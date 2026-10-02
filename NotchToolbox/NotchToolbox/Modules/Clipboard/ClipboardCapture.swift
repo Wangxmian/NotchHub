@@ -15,5 +15,6 @@ struct ClipboardCapture: Equatable {
     var sourceAppName: String?
     var payload: ClipboardCapturePayload
     var thumbnail: ClipboardThumbnailSnapshot? = nil
+    var replacingItemID: UUID? = nil
     var representations: [[ClipboardInlineRepresentation]] = []
 }

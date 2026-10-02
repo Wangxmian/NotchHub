@@ -1174,7 +1174,7 @@ struct ClipboardModuleTests {
         switch history[0].payload {
         case let .inline(fileName, _, _):
             payloadURL = fileStore.url(for: .clipboardPayloads).appending(path: fileName)
-        case .figma:
+        case .figma, .representations:
             Issue.record("Expected inline payload")
             return
         case .fileReferences:

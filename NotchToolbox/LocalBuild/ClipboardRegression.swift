@@ -61,6 +61,13 @@ import CoreText
         capture("all formats disabled")
         precondition(!core.history.contains { $0.previewText == "all formats disabled" })
         try core.updatePreferences { $0.enabledPasteboardTypes = enabled }
+        capture("first\nline")
+        let revisionCount = client.changeCount
+        let revisionID = core.history.first!.id
+        let revisionCopies = core.history.first!.copyCount
+        client.revision = revisionCount; capture("revised source text"); client.revision = nil
+        precondition(core.history.first!.id == revisionID && core.history.first!.previewText == "revised source text")
+        precondition(core.history.first!.copyCount == revisionCopies + 1 && core.history.first!.isPinned)
         let model = ClipboardViewModel(core: core)
         model.refresh(); model.selectedID = model.results.last?.id
         model.moveSelection(1)
@@ -131,6 +138,14 @@ import CoreText
         withExtendedLifetime(bridge) {}; ud.removePersistentDomain(forName: suite)
         precondition(NotchHubReleaseUpdater.newer("v1.10.0", than: "1.9.0"))
         precondition(!NotchHubReleaseUpdater.newer("v1.2.0", than: "1.3.0"))
+        // Geometry covers right-edge reversal, a negative-origin display and oversized preferences.
+        let screen = CGRect(x: -1200, y: 0, width: 1200, height: 800)
+        let left = ClipboardPopupLayout.fit(list: CGRect(x: -450, y: 0, width: 450, height: 800), screen: screen, previewWidth: 400)
+        precondition(left.previewOnLeft && screen.contains(left.frame))
+        let wide = ClipboardPopupLayout.fit(list: CGRect(x: 0, y: 900, width: 2000, height: 2000), screen: screen, previewWidth: 1200)
+        precondition(screen.contains(wide.frame) && wide.previewWidth > 0)
+        let closed = ClipboardPopupLayout.fit(list: left.frame, screen: screen, previewWidth: nil)
+        precondition(closed.previewWidth == 0 && screen.contains(closed.frame))
         // Exercise real Vision OCR on a synthetic image and search the recognized content.
         let context = CGContext(data: nil, width: 1000, height: 160, bitsPerComponent: 8, bytesPerRow: 4000,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -152,7 +167,7 @@ import CoreText
         let recognized = core.history.first { $0.id == ocrItem.id }!
         precondition(recognized.ocrText?.contains("NOTCHHUB") == true, "Vision OCR failed to recognize sample")
         precondition(search.search("OCR TEST", items: [recognized], mode: "exact").count == 1)
-        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 action combinations, setting bounds, script bridge, footer navigation, intent bounds and real Vision OCR")
+        print("PASS: legacy migration, pin-preserving dedup, limits, clearing, pause/ignore/whitelist, sensitive flags, self-write suppression, raw rich/plain/image and grouped roundtrip, 4 search modes, 20 action combinations, setting bounds, script bridge, footer navigation, intent bounds, screen geometry and real Vision OCR")
     }
 }
 @MainActor private final class TestPasteboard: ClipboardPasteboardClient {
@@ -160,8 +175,13 @@ import CoreText
     var text = ""
     var types = ["public.utf8-plain-text"]
     var written: [NSPasteboardItem] = []
+    var revision: Int?
     func copy(_ value: String) { text = value; changeCount += 1 }
-    func snapshot() -> ClipboardPasteboardSnapshot { .init(changeCount: changeCount, availableTypes: types, dataByType: ["public.utf8-plain-text": Data(text.utf8)], fileURLs: []) }
+    func snapshot() -> ClipboardPasteboardSnapshot {
+        var data = ["public.utf8-plain-text": Data(text.utf8)]
+        if let revision { data["x.nspasteboard.ModifiedType"] = Data(String(revision).utf8) }
+        return .init(changeCount: changeCount, availableTypes: types, dataByType: data, fileURLs: [])
+    }
     func write(items: [NSPasteboardItem]) throws { written = items; changeCount += 1 }
 }
 private final class TestSource: ClipboardSourceApplicationProviding {

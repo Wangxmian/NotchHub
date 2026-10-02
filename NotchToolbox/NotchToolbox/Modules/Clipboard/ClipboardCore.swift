@@ -25,6 +25,7 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
     private var pollTimer: Timer?
     private var hasReportedPollFailure = false
     private var settingsSubscription: AnyCancellable?
+    private var sourceRevisionLog: [Int: UUID] = [:]
     private var ownWriteChangeCount: Int?
     private var ocrTasks: [UUID: Task<Void, Never>] = [:]
     private var ocrTail: Task<Void, Never>?
@@ -239,7 +240,7 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
                 if let regex = try? NSRegularExpression(pattern: pattern), regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil { return }
             }
         }
-        guard let capture = try normalizer.normalize(snapshot: snapshot, sourceApp: sourceApp) else {
+        guard var capture = try normalizer.normalize(snapshot: snapshot, sourceApp: sourceApp) else {
             return
         }
 
@@ -248,11 +249,17 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
             return
         }
 
+        if let data = snapshot.dataByType["x.nspasteboard.ModifiedType"],
+           let revision = String(data: data, encoding: .utf8).flatMap(Int.init),
+           let id = sourceRevisionLog[revision], history.contains(where: { $0.id == id }) { capture.replacingItemID = id }
         let previousIDs = Set(history.map(\.id))
         history = try store.save(capture, maxItems: settingsStore.settings.clipboardMaxItems)
         let cleanup = try cleanupService.runIfNeeded()
         if cleanup.didRun { history = try store.loadHistory() }
+        let retained = Set(history.map(\.id))
+        sourceRevisionLog = sourceRevisionLog.filter { retained.contains($0.value) }
         if let newest = history.first {
+            sourceRevisionLog[snapshot.changeCount] = newest.id
             onNewCapture?(newest); scheduleOCR(newest)
             if !previousIDs.contains(newest.id) { ClipboardNotifier.notify(newest.title, sound: "write") }
         }

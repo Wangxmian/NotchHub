@@ -9,6 +9,8 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
     private let shortcutService = CarbonGlobalShortcutService(identifier: 2)
     private var panel: NSPanel?
     private var statusItem: NSStatusItem?
+    private var statusVisibilityObservation: NSKeyValueObservation?
+    private var lastPreviewWidth: CGFloat = 0
     private var monitor: Any?
     private var outsideMonitor: Any?
     private var subscriptions: Set<AnyCancellable> = []
@@ -26,6 +28,9 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
     }
     func start() {
         applyPreferences()
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification).sink { [weak self] _ in
+            DispatchQueue.main.async { self?.resizeForPreview() }
+        }.store(in: &subscriptions)
         model.core.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.applyPreferences() }
         }.store(in: &subscriptions)
@@ -61,6 +66,12 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
                 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
                 item.button?.target = self; item.button?.action = #selector(statusClicked)
                 item.behavior = .removalAllowed; statusItem = item
+                statusVisibilityObservation = item.observe(\.isVisible, options: [.new]) { [weak self] item, _ in
+                    Task { @MainActor in
+                        guard let self, self.statusItem === item, !item.isVisible else { return }
+                        self.model.updatePreferences { $0.showInStatusBar = false }
+                    }
+                }
             }
             let symbol: String
             switch p.menuIcon { case "clipboard": symbol = "doc.on.clipboard"; case "scissors": symbol = "scissors"; case "paperclip": symbol = "paperclip"; default: symbol = "rectangle.topthird.inset.filled" }
@@ -69,7 +80,8 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
             let recent = model.core.sortedHistory.first { !$0.isPinned }.flatMap { try? model.core.fullText($0) } ?? ""
             statusItem?.button?.title = p.showRecentCopyInMenuBar ? String(recent.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: "").prefix(20)) : ""
             statusItem?.button?.setAccessibilityLabel("NotchHub 剪贴板")
-        } else if let statusItem { NSStatusBar.system.removeStatusItem(statusItem); self.statusItem = nil }
+        } else if let statusItem { NSStatusBar.system.removeStatusItem(statusItem); self.statusItem = nil; statusVisibilityObservation = nil }
+        if panel?.isVisible == true { resizeForPreview() }
     }
     private func hotKey() {
         if model.isPresented {
@@ -109,6 +121,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
             panel.contentView = NSHostingView(rootView: ClipboardBrowserView(model: model, close: { [weak self] in self?.closeFloating() }, floating: true))
             self.panel = panel
         }
+        lastPreviewWidth = 0; model.previewOnLeft = false
         panel?.setContentSize(NSSize(width: listWidth, height: height))
         let origin = popupOrigin(position ?? p.popupPosition, size: panel!.frame.size, screen: active)
         panel?.setFrameOrigin(origin); panel?.orderFrontRegardless(); panel?.makeKey()
@@ -127,24 +140,28 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
     private func saveGeometry() {
         guard !adjustingFrame, let panel, panel.isVisible, let screen = panel.screen else { return }
         let area = screen.visibleFrame
-        let preview = model.previewVisible ? max(150, model.preferences.previewWidth) : 0
+        let preview = lastPreviewWidth
         let width = max(250, panel.frame.width - preview)
         listWidth = width
         model.updatePreferences {
             $0.windowWidth = width; $0.windowHeight = panel.frame.height
-            $0.windowX = (panel.frame.midX - area.minX)/area.width
+            $0.windowX = (panel.frame.minX + (model.previewOnLeft ? preview : 0) + width/2 - area.minX)/area.width
             $0.windowY = (panel.frame.maxY - area.minY)/area.height
         }
     }
     private func resizeForPreview() {
         guard let panel, panel.isVisible else { return }
         let screen = panel.screen ?? screenForPopup()
-        let extra = model.previewVisible ? max(150, model.preferences.previewWidth) : 0
-        var frame = panel.frame
-        let newWidth = min(listWidth + extra, screen.visibleFrame.width)
-        // Prefer expanding right; near the right edge shift left.
-        frame.size.width = newWidth; frame.origin.x = min(frame.minX, screen.visibleFrame.maxX-newWidth)
-        adjustingFrame = true; panel.setFrame(frame, display: true); adjustingFrame = false
+        var list = panel.frame
+        if model.previewOnLeft { list.origin.x += lastPreviewWidth }
+        list.size.width = model.preferences.windowWidth
+        list.size.height = model.preferences.windowHeight
+        let layout = ClipboardPopupLayout.fit(list: list, screen: screen.visibleFrame,
+            previewWidth: model.previewVisible && model.selectedItem != nil ? model.preferences.previewWidth : nil)
+        lastPreviewWidth = layout.previewWidth
+        if model.previewOnLeft != layout.previewOnLeft { model.previewOnLeft = layout.previewOnLeft }
+        if model.presentedPreviewWidth != layout.previewWidth { model.presentedPreviewWidth = layout.previewWidth }
+        adjustingFrame = true; panel.setFrame(layout.frame, display: true); adjustingFrame = false
     }
     private func screenForPopup() -> NSScreen {
         let screens = NSScreen.screens

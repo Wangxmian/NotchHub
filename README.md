@@ -24,6 +24,12 @@
 顶部默认入口为“音乐 / 番茄钟 / 更多”。文件暂存入口和拖入唤起已移除。
 没有接入原作者的统计服务，也不会从原作者的更新源自动下载版本。
 
+## 剪贴板开发分支
+
+`clipboard-maccy-parity` 正在对齐用户提供的 Maccy 2.7.1。包含六类统一设置、四种搜索、OCR、固定内容编辑、复制/粘贴动作、浮动面板、脚本控制及 App Intents。
+这些功能正在验收，尚未发布为完整功能一致版本；正式 Releases 保持原有稳定版本。
+完整 Xcode 构建、原有模块测试和隔离行为回归由 GitHub Actions 执行。发布前仍需实测 Figma、中文输入法、多屏、直接粘贴授权、系统快捷指令和更新安装。
+
 ## 构建与验证
 
 使用完整 Xcode 打开 `NotchToolbox/NotchToolbox.xcodeproj`，选择 `NotchToolbox` scheme。
@@ -34,6 +40,7 @@
 ```sh
 python3 NotchToolbox/LocalBuild/build_local.py --template /Applications/NotchHub.app --output /absolute/path/NotchHub.app
 python3 NotchToolbox/LocalBuild/verify.py
+python3 NotchToolbox/LocalBuild/verify.py ClipboardRegression.swift
 ```
 
 脚本复用模板应用已编译的资源目录与音乐辅助工具。首次构建可将模板指向已有的 EasyNotch 应用。

@@ -8,16 +8,15 @@ struct ClipboardBrowserView: View {
     @FocusState private var focused: Bool
     @State private var monitor: Any?
     @State private var presentationID = UUID()
+    @State private var previewDragStart: CGFloat?
 
     var body: some View {
         VStack(spacing: 8) {
             header
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
+                if floating && model.previewOnLeft { detail }
                 history
-                if model.previewVisible, let item = model.selectedItem {
-                    ClipboardDetailView(core: model.core, item: item)
-                        .frame(width: floating ? max(150, model.preferences.previewWidth) : 220)
-                }
+                if !floating || !model.previewOnLeft { detail }
             }
             if let error = model.lastPasteError {
                 Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
@@ -41,6 +40,23 @@ struct ClipboardBrowserView: View {
             if model.activePresentationID == presentationID { model.activePresentationID = nil; model.isPresented = false; model.isInputFocused = false }
         }
         .onChange(of: focused) { model.isInputFocused = $0 }
+    }
+    @ViewBuilder private var detail: some View {
+        if model.previewVisible, let item = model.selectedItem {
+            if floating && !model.previewOnLeft { previewDivider }
+            ClipboardDetailView(core: model.core, item: item)
+                .frame(width: floating ? max(1, model.presentedPreviewWidth - 12) : 220)
+            if floating && model.previewOnLeft { previewDivider }
+        }
+    }
+    private var previewDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.2)).frame(width: 4)
+            .contentShape(Rectangle()).help("拖动调整预览宽度")
+            .gesture(DragGesture().onChanged { value in
+                if previewDragStart == nil { previewDragStart = model.preferences.previewWidth }
+                let delta = model.previewOnLeft ? value.translation.width : -value.translation.width
+                model.updatePreferences { $0.previewWidth = (previewDragStart ?? 400) + delta }
+            }.onEnded { _ in previewDragStart = nil })
     }
     private var header: some View {
         VStack(spacing: 6) {

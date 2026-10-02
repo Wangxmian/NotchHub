@@ -44,6 +44,8 @@ shutil.copyfile(project / 'Vendor/nowplaying-cli.LICENSE', notices / 'nowplaying
 for name in ['Maccy.LICENSE', 'Fuse.LICENSE']:
     shutil.copyfile(project / 'Vendor' / name, notices / name)
 shutil.copyfile(project.parent / 'THIRD_PARTY_NOTICES.md', notices / 'THIRD_PARTY_NOTICES.md')
+for audio in (source / 'Sounds').glob('*.caf'):
+    shutil.copyfile(audio, output / 'Contents/Resources' / audio.name)
 info.pop('CFBundleIconName', None)
 info.pop('EasyNotchLocalCustomization', None)
 import shutil
