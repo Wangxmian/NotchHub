@@ -28,18 +28,24 @@ struct ClipboardBrowserView: View {
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
         .onAppear {
+            model.presentationIsFloating = floating
             model.activePresentationID = presentationID
             model.captureTarget(); model.refresh(); model.isPresented = true; model.isInputFocused = true
             model.closePresentation = close
             model.schedulePreview()
-            focused = true
+            DispatchQueue.main.async { focused = true }
 
         }
         .onDisappear {
             if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
             if model.activePresentationID == presentationID { model.activePresentationID = nil; model.isPresented = false; model.isInputFocused = false }
         }
-        .onChange(of: focused) { model.isInputFocused = $0 }
+        .onChange(of: focused) { if model.activePresentationID == presentationID { model.isInputFocused = $0 } }
+        .onChange(of: model.focusRequest) { _ in
+            guard model.isPresented, model.presentationIsFloating == floating else { return }
+            model.activePresentationID = presentationID
+            focused = false; DispatchQueue.main.async { focused = true }
+        }
     }
     @ViewBuilder private var detail: some View {
         if model.previewVisible, let item = model.selectedItem {
@@ -130,6 +136,8 @@ struct ClipboardBrowserView: View {
             Button("删除", role: .destructive) { model.delete(item.id) }
         }
         .accessibilityLabel(item.title)
+        .accessibilityValue(model.selectedID == item.id ? "已选中" : "未选中")
+        .accessibilityHint("选择后执行默认复制或粘贴动作")
         .accessibilityAction(named: Text(item.isPinned ? "取消固定" : "固定")) { model.pin(item.id) }
         .accessibilityAction(named: Text("删除")) { model.delete(item.id) }
     }
@@ -183,7 +191,7 @@ struct ClipboardDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let image { Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: .infinity) }
-            else { ScrollView { Text(text).font(.system(size: 12)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) } }
+            else { ClipboardTextPreview(text: text).frame(maxHeight: .infinity) }
             Divider()
             Text(item.sourceAppName ?? "未知来源")
             Text("首次：\((item.firstCopiedAt ?? item.copiedAt).formatted())")
@@ -191,6 +199,24 @@ struct ClipboardDetailView: View {
             Text("复制次数：\(item.copyCount)")
             if let image { Text("尺寸：\(Int(image.size.width)) × \(Int(image.size.height))") }
         }.font(.system(size: 10)).foregroundStyle(.secondary)
-        .task(id: item.id) { text = (try? core.fullText(item)) ?? item.previewText; image = (try? core.imageData(item)).flatMap(NSImage.init(data:)) }
+        .task(id: item.contentHash) { text = (try? core.fullText(item)) ?? item.previewText; image = (try? core.imageData(item)).flatMap(NSImage.init(data:)) }
+    }
+}
+
+private struct ClipboardTextPreview: NSViewRepresentable {
+    let text: String
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false
+        let view = NSTextView(); view.isEditable = false; view.isSelectable = true; view.drawsBackground = false
+        view.font = .systemFont(ofSize: 12); view.textColor = .white
+        view.isHorizontallyResizable = false; view.isVerticallyResizable = true
+        view.autoresizingMask = [.width]; view.textContainer?.widthTracksTextView = true
+        view.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        view.minSize = .zero; view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        view.string = text; scroll.documentView = view
+        return scroll
+    }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        if let view = scroll.documentView as? NSTextView, view.string != text { view.string = text }
     }
 }

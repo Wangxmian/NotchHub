@@ -30,6 +30,8 @@ final class ClipboardViewModel: ObservableObject {
     @Published var selectedFooter: Int?
     @Published private(set) var results: [ClipboardSearchService.Result] = []
     @Published var isInputFocused = false
+    @Published var focusRequest = 0
+    var presentationIsFloating = false
     @Published var previewVisible = false
     @Published var previewOnLeft = false
     @Published var presentedPreviewWidth: CGFloat = 400
@@ -84,7 +86,7 @@ final class ClipboardViewModel: ObservableObject {
             }
         }
     }
-    func pin(_ id: UUID) { do { try core.togglePin(id) } catch { reportPasteError(error.localizedDescription) } }
+    func pin(_ id: UUID) { do { try core.togglePin(id); query = ""; refresh(); selectedID = id; schedulePreview() } catch { reportPasteError(error.localizedDescription) } }
     func delete(_ id: UUID) { do { try core.delete(id) } catch { reportPasteError(error.localizedDescription) } }
     func clear(includingPinned: Bool = false) {
         if !preferences.suppressClearAlert {
@@ -122,7 +124,7 @@ final class ClipboardViewModel: ObservableObject {
     func activateSelection() {
         if let footer = selectedFooter { activateFooter(footer); return }
         if let id = selectedID { perform(id) }
-        else { do { try core.copyQuery(query); query = ""; closePresentation?() } catch { reportPasteError(error.localizedDescription) } }
+        else { do { try core.copyQuery(query); query = "" } catch { reportPasteError(error.localizedDescription) } }
     }
     func activateFooter(_ index: Int) {
         switch index {
@@ -179,19 +181,21 @@ final class ClipboardViewModel: ObservableObject {
             activateSelection()
             return nil
         }
-        if event.keyCode == 125 || (f.contains(.control) && !f.contains(.command) && (key == "n" || key == "j" && f == .control)) {
+        let controlNavigation: [NSEvent.ModifierFlags] = [.control, [.control, .shift], [.control, .option], [.control, .option, .shift]]
+        let arrowModifiers = f.isEmpty || f == .shift || f.contains(.command) || f.contains(.option)
+        if event.keyCode == 125 && arrowModifiers || key == "n" && controlNavigation.contains(f) || key == "j" && f == .control {
             if f.contains(.command) || f.contains(.option) { selectLast() } else { moveSelection(1) }; return nil
         }
-        if event.keyCode == 126 || (f.contains(.control) && !f.contains(.command) && (key == "p" || key == "k" && f == .control)) {
+        if event.keyCode == 126 && arrowModifiers || key == "p" && controlNavigation.contains(f) || key == "k" && f == .control {
             if key == "k" && selectedID == results.first?.id { return event }
             if f.contains(.command) || f.contains(.option) { selectedID = results.first?.id } else { moveSelection(-1) }; return nil
         }
-        if event.keyCode == 116 { selectedID = results.first?.id; return nil }
-        if event.keyCode == 121 { selectLast(); return nil }
+        if event.keyCode == 116 && f.isEmpty { selectedID = results.first?.id; return nil }
+        if event.keyCode == 121 && f.isEmpty { selectLast(); return nil }
         if f == .control {
-            if key == "u" { query = ""; return nil }
-            if key == "h" { if !query.isEmpty { query.removeLast() }; return nil }
-            if key == "w" { query = query.replacingOccurrences(of: #"\s*\S+\s*$"#, with: "", options: .regularExpression); return nil }
+            if key == "u" { focusRequest += 1; query = ""; return nil }
+            if key == "h" { focusRequest += 1; if !query.isEmpty { query.removeLast() }; return nil }
+            if key == "w" { focusRequest += 1; let rest = query.split(separator: " ").dropLast().joined(separator: " "); query = rest.isEmpty ? "" : rest + " "; return nil }
         }
         if !f.isEmpty, ClipboardActionResolver.resolve(f, preferences: preferences) != nil {
             let ordinary = results.filter { !$0.item.isPinned }

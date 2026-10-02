@@ -253,7 +253,7 @@ final class ClipboardCore: ObservableObject, EnergyManagedTask {
            let revision = String(data: data, encoding: .utf8).flatMap(Int.init),
            let id = sourceRevisionLog[revision], history.contains(where: { $0.id == id }) { capture.replacingItemID = id }
         let previousIDs = Set(history.map(\.id))
-        history = try store.save(capture, maxItems: settingsStore.settings.clipboardMaxItems)
+        history = try store.save(capture, maxItems: settingsStore.settings.clipboardMaxItems, preferences: p)
         let cleanup = try cleanupService.runIfNeeded()
         if cleanup.didRun { history = try store.loadHistory() }
         let retained = Set(history.map(\.id))

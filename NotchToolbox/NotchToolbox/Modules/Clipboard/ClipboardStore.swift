@@ -20,7 +20,7 @@ final class ClipboardStore {
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
-    func save(_ capture: ClipboardCapture, maxItems: Int) throws -> [ClipboardHistoryItem] {
+    func save(_ capture: ClipboardCapture, maxItems: Int, preferences: ClipboardPreferences? = nil) throws -> [ClipboardHistoryItem] {
         let previousHistory = try loadHistory()
         var history = previousHistory
         var removedItems: [ClipboardHistoryItem] = []
@@ -43,8 +43,6 @@ final class ClipboardStore {
             item.firstCopiedAt = item.firstCopiedAt ?? item.copiedAt
             item.copiedAt = capture.capturedAt
             item.copyCount += 1
-            item.sourceAppBundleID = capture.sourceAppBundleID
-            item.sourceAppName = capture.sourceAppName
             history.insert(item, at: 0)
             try persist(history)
             return history
@@ -75,17 +73,21 @@ final class ClipboardStore {
             if let replaced = history.first(where: { $0.id == capture.replacingItemID }) {
                 item.id = replaced.id; item.firstCopiedAt = replaced.firstCopiedAt ?? replaced.copiedAt
                 item.copyCount = replaced.copyCount + 1; item.pinKey = replaced.pinKey; item.alias = replaced.alias
+                item.sourceAppBundleID = replaced.sourceAppBundleID; item.sourceAppName = replaced.sourceAppName
                 history.removeAll { $0.id == replaced.id }; removedItems.append(replaced)
             }
-            history.insert(item, at: 0)
-
+            // Maccy always retains the incoming copy and removes the tail of the
+            // existing sorted ordinary history before inserting it.
+            let ordered = preferences.map { ClipboardSearchService.sort(history, preferences: $0) } ?? history
             var ordinaryCount = 0
-            history = history.filter { item in
-                if item.isPinned { return true }
-                ordinaryCount += 1
-                if ordinaryCount > maxItems { removedItems.append(item); return false }
-                return true
-            }
+            let ordinaryLimit = max(0, maxItems - (item.isPinned ? 0 : 1))
+            let retained = Set(ordered.filter { previous in
+                if previous.isPinned { return true }
+                ordinaryCount += 1; return ordinaryCount <= ordinaryLimit
+            }.map(\.id))
+            removedItems += history.filter { !retained.contains($0.id) }
+            history = history.filter { retained.contains($0.id) }
+            history.insert(item, at: 0)
 
             try persist(history)
             try? removeDetachedFiles(

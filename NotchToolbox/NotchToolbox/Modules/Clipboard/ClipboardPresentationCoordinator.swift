@@ -78,7 +78,9 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
             statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "NotchHub 剪贴板")
             statusItem?.button?.appearsDisabled = p.ignoreEvents || p.enabledPasteboardTypes.isEmpty
             let recent = model.core.sortedHistory.first { !$0.isPinned }.flatMap { try? model.core.fullText($0) } ?? ""
-            statusItem?.button?.title = p.showRecentCopyInMenuBar ? String(recent.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: "").prefix(20)) : ""
+            var menuText = String(recent.prefix(100)).trimmingCharacters(in: .whitespacesAndNewlines)
+            menuText.unicodeScalars.removeAll { CharacterSet.newlines.contains($0) }
+            statusItem?.button?.title = p.showRecentCopyInMenuBar ? String(menuText.prefix(20)) : ""
             statusItem?.button?.setAccessibilityLabel("NotchHub 剪贴板")
         } else if let statusItem { NSStatusBar.system.removeStatusItem(statusItem); self.statusItem = nil; statusVisibilityObservation = nil }
         if panel?.isVisible == true { resizeForPreview() }
@@ -107,6 +109,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
     }
     func openFloating(position: String? = nil) {
         closeNotch?()
+        model.activePresentationID = nil; model.presentationIsFloating = true
         model.captureTarget(); model.query = ""; model.filter = "all"; model.refresh()
         let p = model.preferences
         let active = screenForPopup()
@@ -126,7 +129,7 @@ final class ClipboardPresentationCoordinator: NSObject, NSWindowDelegate {
         let origin = popupOrigin(position ?? p.popupPosition, size: panel!.frame.size, screen: active)
         panel?.setFrameOrigin(origin); panel?.orderFrontRegardless(); panel?.makeKey()
         model.isPresented = true; model.closePresentation = { [weak self] in self?.closeFloating() }
-        model.previewVisible = false; model.schedulePreview()
+        model.previewVisible = false; model.schedulePreview(); model.focusRequest += 1
     }
     func closeFloating() {
         guard panel?.isVisible == true else { return }
