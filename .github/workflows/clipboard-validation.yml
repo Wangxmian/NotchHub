@@ -9,8 +9,12 @@ jobs:
   native-build:
     runs-on: macos-15
     timeout-minutes: 35
+    env:
+      NOTCHHUB_BACKUP_DIR: ${{ github.workspace }}/verified-backups
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Select Swift 6.2 Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
       - name: Build native application and extract App Intents metadata
@@ -59,6 +63,9 @@ jobs:
           PYCODE
             exit 1
           fi
+      - name: Back up passed native module tests
+        if: success()
+        run: python3 scripts/backup_verified.py --label native-module-tests-passed
       - name: Run clipboard behavior regression
         if: success() || failure()
         run: python3 NotchToolbox/LocalBuild/verify.py ClipboardRegression.swift > clipboard-regression.log 2>&1
@@ -68,6 +75,16 @@ jobs:
       - name: Verify App Intents metadata is present
         if: success() || failure()
         run: test -d build/Build/Products/Release/NotchHub.app/Contents/Resources/Metadata.appintents
+      - name: Back up verified source
+        if: success()
+        run: python3 scripts/backup_verified.py --label full-xcode-validation-passed --destination verified-backups
+      - name: Upload verified source backup
+        if: always() && hashFiles('verified-backups/**/verification.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-source-${{ github.sha }}
+          path: verified-backups/
+          retention-days: 90
       - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4

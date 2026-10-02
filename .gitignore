@@ -47,3 +47,9 @@ LocalBuild/test-output/
 
 # Python local tooling
 __pycache__/
+
+# Verification backups and logs
+verified-backups/
+*.log
+*.xcresult/
+*.app/
