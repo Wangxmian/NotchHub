@@ -44,3 +44,9 @@ outputs/
 *.dmg
 *.zip
 LocalBuild/test-output/
+
+# Verification backups and logs
+verified-backups/
+*.log
+*.xcresult/
+*.app/
