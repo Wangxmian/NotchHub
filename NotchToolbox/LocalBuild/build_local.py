@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a local arm64 app with Command Line Tools; reuse compiled assets from an installed EasyNotch."""
 from pathlib import Path
-import argparse, plistlib, subprocess, tempfile
+import argparse, plistlib, subprocess, tempfile, shutil
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--template', type=Path, default=Path('/Applications/NotchHub.app') if Path('/Applications/NotchHub.app').exists() else Path('/Applications/EasyNotch.app'))
@@ -34,6 +34,10 @@ info.update(CFBundleShortVersionString='1.2.0', CFBundleVersion='25',
             CFBundleExecutable='NotchHub', CFBundleName='NotchHub', CFBundleDisplayName='NotchHub',
             CFBundleIdentifier='io.github.Wangxmian.NotchHub', CFBundleIconFile='NotchHub',
             NotchHubCredentialService='com.luojie.NotchToolbox')
+notices = output / 'Contents/Resources/ThirdPartyLicenses'
+notices.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(project / 'Vendor/nowplaying-cli.LICENSE', notices / 'nowplaying-cli.LICENSE')
+shutil.copyfile(project.parent / 'THIRD_PARTY_NOTICES.md', notices / 'THIRD_PARTY_NOTICES.md')
 info.pop('CFBundleIconName', None)
 info.pop('EasyNotchLocalCustomization', None)
 import shutil
