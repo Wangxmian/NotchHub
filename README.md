@@ -33,25 +33,40 @@
 
 ## 功能截图
 
-以下为 `1.3.0-preview` 的真实 SwiftUI 界面渲染，使用独立的示例数据，不包含个人任务、剪贴板历史或 API 信息。剪贴板界面属于开发预览功能。
+以下为 `1.3.0-preview` 的 **2× Retina 无损 PNG**，点击图片可查看高清原图。桌面、菜单栏与摄像头位置为示意；应用内容使用现有 SwiftUI 视图、刘海曲线和布局参数渲染，采用独立示例数据。
 
-### 待办与番茄钟
+### 收起：任务与时间留在刘海两侧
 
-任务列表与专注计时并排显示，可为任务预估番茄数，并查看专注记录。
+专注时保持收起状态，当前任务与倒计时显示在刘海两侧，留出桌面工作空间。
 
-![待办与番茄钟：任务列表、任务关联计时与专注记录入口](assets/screenshots/pomodoro.png)
+[![刘海收起状态：任务名称与剩余时间分别显示在摄像头两侧](assets/screenshots/notch-collapsed@2x.png)](assets/screenshots/notch-collapsed@2x.png)
 
-### 剪贴板历史
+### 展开：待办与番茄钟
 
-集中查找历史内容，按类型筛选，固定常用内容，并通过键盘快捷操作。
+面板从屏幕顶部向下展开，与刘海连成一体。任务列表与计时并排显示，可预估番茄数、切换任务并查看专注记录。
 
-![剪贴板历史：搜索、类型筛选、固定内容及快捷操作](assets/screenshots/clipboard.png)
+[![刘海展开状态：完整外壳、顶部导航、任务列表与专注计时](assets/screenshots/notch-pomodoro@2x.png)](assets/screenshots/notch-pomodoro@2x.png)
 
-### 统一剪贴板设置
+### 展开：音乐控制
+
+在刘海面板中查看歌曲与播放进度，暂停、播放或切换歌曲，无需切回播放器。
+
+[![刘海音乐面板：曲目信息、播放进度及播放控制](assets/screenshots/notch-music@2x.png)](assets/screenshots/notch-music@2x.png)
+
+### 展开：剪贴板历史（开发预览）
+
+在刘海面板集中查找历史内容、按类型筛选并固定常用项；也支持独立浮动窗口。
+
+[![刘海剪贴板面板：完整外壳、历史搜索、类型筛选与固定内容](assets/screenshots/notch-clipboard@2x.png)](assets/screenshots/notch-clipboard@2x.png)
+
+<details>
+<summary>查看统一剪贴板设置（高清）</summary>
 
 六类设置整合到 NotchHub；通用页集中配置快捷键、搜索方式与选择动作。
 
-![剪贴板通用设置：六类设置导航、快捷键与复制粘贴选项](assets/screenshots/clipboard-settings.png)
+[![高清剪贴板通用设置](assets/screenshots/clipboard-settings@2x.png)](assets/screenshots/clipboard-settings@2x.png)
+
+</details>
 
 ## 剪贴板开发预览
 
