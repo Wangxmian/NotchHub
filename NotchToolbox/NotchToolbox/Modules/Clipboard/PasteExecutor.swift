@@ -23,21 +23,26 @@ final class PasteExecutor {
         self.referenceValidator = referenceValidator ?? ClipboardReferenceValidator()
     }
 
-    func write(item: ClipboardHistoryItem) throws -> ClipboardPastebackTicket {
+    func write(item: ClipboardHistoryItem, removeFormatting: Bool = false) throws -> ClipboardPastebackTicket {
         let pasteboardItems: [NSPasteboardItem]
         var resourceLeases: [SecurityScopedResourceLease] = []
 
         switch item.payload {
-        case .inline, .figma:
-            let representations = try store.payloadRepresentations(for: item)
-            let pasteboardItem = NSPasteboardItem()
-            for representation in representations {
-                pasteboardItem.setData(
-                    representation.data,
-                    forType: NSPasteboard.PasteboardType(representation.pasteboardType)
-                )
+        case .inline, .figma, .representations:
+            let groups = try store.representationGroups(for: item)
+            let hasPlain = groups.flatMap { $0 }.contains { $0.pasteboardType == NSPasteboard.PasteboardType.string.rawValue }
+            pasteboardItems = groups.compactMap { group in
+                let representations = removeFormatting && hasPlain ? group.filter {
+                    $0.pasteboardType == NSPasteboard.PasteboardType.string.rawValue || $0.pasteboardType == NSPasteboard.PasteboardType.fileURL.rawValue
+                } : group
+                guard !representations.isEmpty else { return nil }
+                let value = NSPasteboardItem()
+                for representation in representations {
+                    value.setData(representation.data, forType: .init(representation.pasteboardType))
+                }
+                value.setString("", forType: .init("io.github.Wangxmian.NotchHub.clipboard"))
+                return value
             }
-            pasteboardItems = [pasteboardItem]
         case let .fileReferences(references):
             let resolvedURLs = try referenceValidator.validate(references)
             resourceLeases = resolvedURLs.map(SecurityScopedResourceLease.init(url:))

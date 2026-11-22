@@ -6,6 +6,8 @@ import argparse, plistlib, subprocess, tempfile, shutil
 parser = argparse.ArgumentParser()
 parser.add_argument('--template', type=Path, default=Path('/Applications/NotchHub.app') if Path('/Applications/NotchHub.app').exists() else Path('/Applications/EasyNotch.app'))
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--version', default='1.3.0-dev')
+parser.add_argument('--build-number', default='26')
 args = parser.parse_args()
 project = Path(__file__).resolve().parents[1]
 source = project / 'NotchToolbox'
@@ -16,28 +18,34 @@ output.parent.mkdir(parents=True, exist_ok=True)
 subprocess.run(['ditto', str(args.template), str(output)], check=True)
 # Keep the resource catalog and media helper, replace the main executable.
 sdk = subprocess.check_output(['xcrun', '--show-sdk-path'], text=True).strip()
-with tempfile.TemporaryDirectory(prefix='easynotch-compile-') as cache:
+with tempfile.TemporaryDirectory(prefix='notchhub-compile-') as cache:
+    snapshot = Path(cache) / 'Source'
+    shutil.copytree(source, snapshot)
     command = ['xcrun', 'swiftc', '-O', '-whole-module-optimization', '-swift-version', '5',
                '-default-isolation', 'MainActor', '-enable-upcoming-feature', 'NonisolatedNonsendingByDefault',
                '-enable-upcoming-feature', 'InferIsolatedConformances',
                '-D', 'DIRECT_DISTRIBUTION', '-D', 'LOCAL_CUSTOM', '-module-name', 'NotchToolbox',
                '-sdk', sdk, '-target', 'arm64-apple-macosx13.0', '-module-cache-path', cache,
                '-o', str(output / 'Contents/MacOS/NotchHub')]
-    subprocess.run(command + [str(p) for p in sorted(source.rglob('*.swift'))], check=True)
+    subprocess.run(command + [str(p) for p in sorted(snapshot.rglob('*.swift'))], check=True)
 info_path = output / 'Contents/Info.plist'
 with info_path.open('rb') as f: info = plistlib.load(f)
 old_executable = info.get('CFBundleExecutable', 'EasyNotch')
 if old_executable != 'NotchHub':
     old_binary = output / 'Contents/MacOS' / old_executable
     if old_binary.exists(): old_binary.unlink()
-info.update(CFBundleShortVersionString='1.2.0', CFBundleVersion='25',
+info.update(CFBundleShortVersionString=args.version, CFBundleVersion=args.build_number,
             CFBundleExecutable='NotchHub', CFBundleName='NotchHub', CFBundleDisplayName='NotchHub',
             CFBundleIdentifier='io.github.Wangxmian.NotchHub', CFBundleIconFile='NotchHub',
             NotchHubCredentialService='com.luojie.NotchToolbox')
 notices = output / 'Contents/Resources/ThirdPartyLicenses'
 notices.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(project / 'Vendor/nowplaying-cli.LICENSE', notices / 'nowplaying-cli.LICENSE')
+for name in ['Maccy.LICENSE', 'Fuse.LICENSE']:
+    shutil.copyfile(project / 'Vendor' / name, notices / name)
 shutil.copyfile(project.parent / 'THIRD_PARTY_NOTICES.md', notices / 'THIRD_PARTY_NOTICES.md')
+for audio in (source / 'Sounds').glob('*.caf'):
+    shutil.copyfile(audio, output / 'Contents/Resources' / audio.name)
 info.pop('CFBundleIconName', None)
 info.pop('EasyNotchLocalCustomization', None)
 import shutil

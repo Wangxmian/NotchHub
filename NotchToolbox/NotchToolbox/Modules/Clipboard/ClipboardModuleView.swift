@@ -9,27 +9,8 @@ struct ClipboardModuleView: View {
     @StateObject private var toast = PanelToastPresenter()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            contentSurface
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .overlay(alignment: .bottom) {
-            PanelToastView(presenter: toast)
-        }
-        .onChange(of: viewModel.pasteErrorToken) { _ in
-            guard viewModel.phase != .pastebackSuccess else { return }
-            toast.present(notice: viewModel.lastPasteError, emphasis: .error)
-        }
-        .onAppear {
-            viewModel.refresh()
-            updatePreferredBodySize()
-        }
-        .onChange(of: viewModel.isEmpty) { _ in
-            updatePreferredBodySize()
-        }
-        .onChange(of: viewModel.phase) { _ in
-            updatePreferredBodySize()
-        }
+        ClipboardBrowserView(model: viewModel, close: onSuccessfulPaste)
+            .onAppear { onPreferredBodySizeChange?(CGSize(width: 580, height: 384)) }
     }
 
     private var contentSurface: some View {

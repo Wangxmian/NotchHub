@@ -18,7 +18,7 @@ struct SharedCoreServicesTests {
         #expect(settings.animationMode == .natural)
         #expect(settings.animationSpeed == .normal)
         #expect(settings.moduleOrder == NotchModuleID.allCases)
-        #expect(settings.clipboardMaxItems == 20)
+        #expect(settings.clipboardMaxItems == 200)
         #expect(settings.clipboardAutoCleanupPolicy == .none)
         #expect(settings.fileStashAutoCleanupPolicy == .none)
         #expect(settings.aiProviderConfigSummaries.map(\.provider) == AIProviderKind.allCases)

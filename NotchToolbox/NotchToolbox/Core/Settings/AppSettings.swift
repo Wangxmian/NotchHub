@@ -66,6 +66,7 @@ nonisolated struct AppSettings: Codable, Equatable {
     var animationMode: AnimationMode
     var animationSpeed: AnimationSpeed
     var moduleOrder: [NotchModuleID]
+    var clipboardPreferences: ClipboardPreferences
     var clipboardMaxItems: Int
     var clipboardAutoCleanupPolicy: CleanupPolicy
     var fileStashAutoCleanupPolicy: CleanupPolicy
@@ -90,8 +91,10 @@ nonisolated struct AppSettings: Codable, Equatable {
         aiChatHistoryRetention: AIChatHistoryRetention = .threeMonths,
         lastAIChatHistoryPrunedAt: Date? = nil,
         hasCompletedOnboarding: Bool = false,
-        isAnalyticsEnabled: Bool = true
+        isAnalyticsEnabled: Bool = true,
+        clipboardPreferences: ClipboardPreferences = .init()
     ) {
+        self.clipboardPreferences = clipboardPreferences
         self.launchAtLogin = launchAtLogin
         self.isGlobalShortcutEnabled = isGlobalShortcutEnabled
         self.globalShortcut = globalShortcut
@@ -120,7 +123,7 @@ nonisolated struct AppSettings: Codable, Equatable {
         animationMode: .natural,
         animationSpeed: .normal,
         moduleOrder: NotchModuleID.allCases,
-        clipboardMaxItems: 20,
+        clipboardMaxItems: 200,
         clipboardAutoCleanupPolicy: .none,
         fileStashAutoCleanupPolicy: .none,
         aiProviderConfigSummaries: AIProviderConfigSummary.defaultSummaries,
@@ -137,6 +140,7 @@ extension AppSettings {
         case animationMode
         case animationSpeed
         case moduleOrder
+        case clipboardPreferences
         case clipboardMaxItems
         case clipboardAutoCleanupPolicy
         case fileStashAutoCleanupPolicy
@@ -170,7 +174,8 @@ extension AppSettings {
             lastAIChatHistoryPrunedAt: try container.decodeIfPresent(Date.self, forKey: .lastAIChatHistoryPrunedAt),
             hasCompletedOnboarding: try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? defaults.hasCompletedOnboarding,
             // 老版本的配置文件没有这个键；缺省视为开启，与全新安装保持一致
-            isAnalyticsEnabled: try container.decodeIfPresent(Bool.self, forKey: .isAnalyticsEnabled) ?? defaults.isAnalyticsEnabled
+            isAnalyticsEnabled: try container.decodeIfPresent(Bool.self, forKey: .isAnalyticsEnabled) ?? defaults.isAnalyticsEnabled,
+            clipboardPreferences: try container.decodeIfPresent(ClipboardPreferences.self, forKey: .clipboardPreferences) ?? .init()
         )
     }
 

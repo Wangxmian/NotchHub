@@ -43,6 +43,13 @@ final class SettingsStore: ObservableObject {
             withIntermediateDirectories: true
         )
 
+        let backup = storageURL.deletingLastPathComponent().appending(path: "settings-before-maccy-upgrade.json")
+        if FileManager.default.fileExists(atPath: storageURL.path), !FileManager.default.fileExists(atPath: backup.path) {
+            let previous = try Data(contentsOf: storageURL)
+            if let object = try JSONSerialization.jsonObject(with: previous) as? [String: Any], object["clipboardPreferences"] == nil {
+                try FileManager.default.copyItem(at: storageURL, to: backup)
+            }
+        }
         let data = try encoder.encode(settings)
         try data.write(to: storageURL, options: [.atomic])
     }

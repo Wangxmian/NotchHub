@@ -4,6 +4,7 @@ import Testing
 @testable import NotchToolbox
 
 @MainActor
+@Suite(.serialized)
 struct ClipboardModuleTests {
 
     @Test func liveClientExcludesWebURLsFromFileURLs() {
@@ -470,7 +471,7 @@ struct ClipboardModuleTests {
         #expect(FileManager.default.fileExists(atPath: firstThumbnailURL.path(percentEncoded: false)) == false)
     }
 
-    @Test func storeDuplicateReplacementRemovesOrphanThumbnailFile() throws {
+    @Test func storeDuplicateRetainsExistingThumbnailWithoutOrphans() throws {
         let root = try Self.makeTemporaryRoot()
         let fileStore = LocalFileStore(baseURL: root)
         let settingsStore = try SettingsStore(
@@ -516,7 +517,7 @@ struct ClipboardModuleTests {
                 sourceAppBundleID: nil,
                 sourceAppName: nil,
                 payload: .inline(
-                    data: Data([0x02]),
+                    data: Data([0x01]),
                     pasteboardType: "public.png",
                     suggestedFileExtension: "png"
                 ),
@@ -535,7 +536,11 @@ struct ClipboardModuleTests {
 
         let replacementThumbnail = try #require(replacement.first?.thumbnail)
         #expect(replacement.count == 1)
-        #expect(FileManager.default.fileExists(atPath: firstThumbnailURL.path(percentEncoded: false)) == false)
+        #expect(replacement.first?.id == first.first?.id)
+        #expect(replacement.first?.copyCount == 2)
+        #expect(replacementThumbnail.fileName == first.first?.thumbnail?.fileName)
+        #expect(try FileManager.default.contentsOfDirectory(at: fileStore.url(for: .clipboardThumbnails), includingPropertiesForKeys: nil).count == 1)
+        #expect(FileManager.default.fileExists(atPath: firstThumbnailURL.path(percentEncoded: false)) == true)
         #expect(replacementThumbnail.fileName.hasSuffix(".png"))
         #expect(replacementThumbnail.fileName != "duplicate-thumbnail.png")
     }
@@ -1041,7 +1046,7 @@ struct ClipboardModuleTests {
         let ticket = try executor.write(item: history[0])
 
         #expect(ticket.contentHash == "plain-hash")
-        #expect(pasteboard.lastWrittenTypes == ["public.utf8-plain-text"])
+        #expect(Set(pasteboard.lastWrittenTypes) == Set(["public.utf8-plain-text", "io.github.Wangxmian.NotchHub.clipboard"]))
     }
 
     @Test func pasteExecutorWritesAllStoredFigmaRepresentationsBackToPasteboard() throws {
@@ -1090,11 +1095,12 @@ struct ClipboardModuleTests {
         let ticket = try executor.write(item: reloaded[0])
 
         #expect(ticket.contentHash == "figma-text-hash")
-        #expect(pasteboard.lastWrittenTypes == [
+        #expect(Set(pasteboard.lastWrittenTypes) == Set([
             "public.html",
             "public.utf8-plain-text",
             "org.chromium.internal.source-rfh-token",
-        ])
+            "io.github.Wangxmian.NotchHub.clipboard",
+        ]))
         #expect(history.count == 1)
     }
 
@@ -1174,7 +1180,7 @@ struct ClipboardModuleTests {
         switch history[0].payload {
         case let .inline(fileName, _, _):
             payloadURL = fileStore.url(for: .clipboardPayloads).appending(path: fileName)
-        case .figma:
+        case .figma, .representations:
             Issue.record("Expected inline payload")
             return
         case .fileReferences:

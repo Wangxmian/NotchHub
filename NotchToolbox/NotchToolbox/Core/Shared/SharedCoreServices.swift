@@ -56,6 +56,12 @@ final class SharedCoreServices {
     }
 
     static func live() -> SharedCoreServices {
+        #if LOCAL_CUSTOM
+        if let path = ProcessInfo.processInfo.environment["NOTCHHUB_TEST_DATA_DIR"] {
+            do { return try SharedCoreServices(baseURL: URL(fileURLWithPath: path), credentialStore: InMemorySecureCredentialStore()) }
+            catch { return fallback() }
+        }
+        #endif
         do {
             return try SharedCoreServices(
                 localFileStore: LocalFileStore(),
